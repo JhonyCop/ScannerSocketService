@@ -1,0 +1,7 @@
+C:\Users\CSDNTJEM\Desktop\APPWEBSOCKET\ScannerWebSocketFormService.pdb
+C:\Users\CSDNTJEM\Desktop\APPWEBSOCKET\D3DCompiler_47_cor3.dll
+C:\Users\CSDNTJEM\Desktop\APPWEBSOCKET\PenImc_cor3.dll
+C:\Users\CSDNTJEM\Desktop\APPWEBSOCKET\PresentationNative_cor3.dll
+C:\Users\CSDNTJEM\Desktop\APPWEBSOCKET\vcruntime140_cor3.dll
+C:\Users\CSDNTJEM\Desktop\APPWEBSOCKET\wpfgfx_cor3.dll
+C:\Users\CSDNTJEM\Desktop\APPWEBSOCKET\ScannerWebSocketFormService.exe

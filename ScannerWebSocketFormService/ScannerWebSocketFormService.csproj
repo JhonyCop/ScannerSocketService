@@ -1,0 +1,35 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>WinExe</OutputType>
+        <TargetFramework>net8.0-windows</TargetFramework>
+        <Nullable>enable</Nullable>
+        <UseWindowsForms>true</UseWindowsForms>
+        <ImplicitUsings>enable</ImplicitUsings>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Interop.WIA" Version="1.0.0" />
+      <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0-preview.5.25277.114" />
+      <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.0-preview.5.25277.114" />
+      <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0-preview.5.25277.114" />
+      <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.0-preview.5.25277.114" />
+      <PackageReference Include="NTwain" Version="3.7.5" />
+      <PackageReference Include="PDFsharp" Version="6.2.0" />
+      <PackageReference Include="System.Management" Version="8.0.0" />
+      <PackageReference Include="System.Net.NetworkInformation" Version="4.3.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Compile Update="UnifiedDeviceSelectorForm.cs">
+        <SubType>Form</SubType>
+      </Compile>
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Update="TWAINDSM.dll">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </None>
+    </ItemGroup>
+
+</Project>
