@@ -49,27 +49,8 @@ public class TempFileManager : ITempFileManager, IDisposable
             }
         }
 
-        
         public void AddTempFile(string filePath)
         {
-            // VALIDACIÓN
-            if (string.IsNullOrWhiteSpace(filePath))
-                throw new ArgumentException("Ruta de archivo vacía");
-    
-            // Validar que el archivo esté dentro del directorio temporal
-            var fullPath = Path.GetFullPath(filePath);
-            var tempPath = Path.GetFullPath(_tempFolder);
-    
-            if (!fullPath.StartsWith(tempPath, StringComparison.OrdinalIgnoreCase))
-                throw new UnauthorizedAccessException("Archivo fuera del directorio temporal");
-    
-            // Validar extensión de archivo
-            var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".pdf" };
-            var extension = Path.GetExtension(filePath).ToLowerInvariant();
-    
-            if (!allowedExtensions.Contains(extension))
-                throw new ArgumentException($"Tipo de archivo no permitido: {extension}");
-    
             _tempFilesCreated.Add(filePath);
         }
 
