@@ -15,7 +15,7 @@ public class WiaService : IScannerService, IDisposable
     private bool _isScanning = false;
     private bool _disposed = false;
 
-    // ⚡ TIMEOUTS OPTIMIZADOS PARA VERIFICACIÓN
+    //  TIMEOUTS OPTIMIZADOS PARA VERIFICACIÓN
     private readonly TimeSpan _scanTimeout = TimeSpan.FromSeconds(30);                    // 30 segundos para escanear (más realista)
     private readonly TimeSpan _deviceResponseTimeout = TimeSpan.FromSeconds(3);          // 3 segundos para respuesta inicial
     
@@ -24,19 +24,19 @@ public class WiaService : IScannerService, IDisposable
     private readonly TimeSpan _connectionTimeout = TimeSpan.FromSeconds(2);              // 2 segundos para conexión
     private readonly TimeSpan _disconnectedDeviceTimeout = TimeSpan.FromSeconds(1);      // 1 segundo para dispositivos desconectados
 
-    // ⚡ TIMEOUTS ESPECÍFICOS PARA VERIFICACIÓN PRE-ESCANEO
+    //  TIMEOUTS ESPECÍFICOS PARA VERIFICACIÓN PRE-ESCANEO
     private readonly TimeSpan _preScanCheck = TimeSpan.FromSeconds(1);                   // 1 segundo para verificar antes de escanear
     private readonly TimeSpan _deviceAvailabilityCheck = TimeSpan.FromSeconds(2);        // 2 segundos para verificar disponibilidad
     
     // Sistema de timeouts y cancelación automática
     private CancellationTokenSource? _scanCancellationSource;
     
-    // ⚡ CACHE OPTIMIZADO CON TIEMPOS CORREGIDOS
+    //  CACHE OPTIMIZADO CON TIEMPOS CORREGIDOS
     private readonly Dictionary<string, ScannerDevice> _deviceCache = new();
     private DateTime _lastDeviceScan = DateTime.MinValue;
     private readonly TimeSpan _cacheExpiry = TimeSpan.FromMinutes(5);                    // 5 minutos para cache de dispositivos
     
-    // ⚡ Cache de conectividad con tiempos apropiados
+    //  Cache de conectividad con tiempos apropiados
     private readonly Dictionary<string, (bool IsConnected, DateTime CheckTime)> _connectivityCache = new();
     private readonly TimeSpan _connectivityCacheExpiry = TimeSpan.FromMinutes(2);        // 2 minutos para conectividad
     
@@ -374,7 +374,7 @@ public class WiaService : IScannerService, IDisposable
 
 
         
-    // ⚡ Verificación rápida de conectividad ANTES del escaneo
+    //  Verificación rápida de conectividad ANTES del escaneo
     public async Task<bool> QuickConnectivityCheckAsync(ScannerDevice device)
     {
         var deviceId = device.Id ?? "unknown";
@@ -384,12 +384,12 @@ public class WiaService : IScannerService, IDisposable
         {
             if (DateTime.Now - cached.CheckTime < _connectivityCacheExpiry)
             {
-                _logger.LogDebug("⚡ Cache conectividad: {DeviceId} = {IsConnected}", deviceId, cached.IsConnected);
+                _logger.LogDebug(" Cache conectividad: {DeviceId} = {IsConnected}", deviceId, cached.IsConnected);
                 return cached.IsConnected;
             }
         }
 
-        _logger.LogInformation("⚡ Verificación robusta de conectividad: {DeviceName}", device.Name);
+        _logger.LogInformation(" Verificación robusta de conectividad: {DeviceName}", device.Name);
         QuickConnectivityCheckStarted?.Invoke(this, $"Verificando {device.Name}...");
 
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -550,7 +550,7 @@ public class WiaService : IScannerService, IDisposable
         var cacheExpiry = isConnected ? _connectivityCacheExpiry : TimeSpan.FromMinutes(1);
         _connectivityCache[deviceId] = (isConnected, DateTime.Now);
 
-        _logger.LogInformation("⚡ Conectividad {DeviceName}: {Result} ({ElapsedMs}ms)", 
+        _logger.LogInformation(" Conectividad {DeviceName}: {Result} ({ElapsedMs}ms)", 
             device.Name, isConnected ? " CONECTADO" : " DESCONECTADO", stopwatch.ElapsedMilliseconds);
 
         if (isConnected)
@@ -610,7 +610,7 @@ public class WiaService : IScannerService, IDisposable
         // Usar cache si está disponible y no ha expirado
         if (DateTime.Now - _lastDeviceScan < _cacheExpiry && _deviceCache.Count > 0)
         {
-            _logger.LogInformation("⚡ Cache WIA válido - {Count} dispositivos", _deviceCache.Count);
+            _logger.LogInformation(" Cache WIA válido - {Count} dispositivos", _deviceCache.Count);
             return _deviceCache.Values.Where(d => !IsDeviceKnownUnresponsive(d.Id)).ToList();
         }
 
@@ -704,7 +704,7 @@ public class WiaService : IScannerService, IDisposable
         return devices;
     }
     
-    // ⚡ Verificación SÚPER rápida (usando el timeout correcto)
+    //  Verificación SÚPER rápida (usando el timeout correcto)
     private async Task<bool> IsDeviceResponsiveSuperFastAsync(DeviceInfo deviceInfo, CancellationToken cancellationToken)
     {
         try
@@ -915,7 +915,7 @@ public class WiaService : IScannerService, IDisposable
         }
     }
 
-    // ⚡ OPTIMIZADO: StartScan con verificación previa rápida
+    //  OPTIMIZADO: StartScan con verificación previa rápida
     public async Task<bool> StartScanAsync(ScannerDevice device, bool showUI = false)
     {
         if (_isScanning)
@@ -935,7 +935,7 @@ public class WiaService : IScannerService, IDisposable
         try
         {
             // Verificación previa de conexión
-            _logger.LogInformation("⚡ Verificando disponibilidad del dispositivo: {DeviceName}", device.Name);
+            _logger.LogInformation(" Verificando disponibilidad del dispositivo: {DeviceName}", device.Name);
 
             var isConnected = await QuickConnectivityCheckAsync(device);
             if (!isConnected)
@@ -989,7 +989,7 @@ public class WiaService : IScannerService, IDisposable
             _scanCancellationSource = new CancellationTokenSource(_scanTimeout);
             var cancellationToken = _scanCancellationSource.Token;
 
-            _logger.LogInformation("🖨️ Iniciando escaneo WIA: {DeviceName}", device.Name);
+            _logger.LogInformation(" Iniciando escaneo WIA: {DeviceName}", device.Name);
 
             if (!await ConnectToDeviceWithTimeoutAsync(device, cancellationToken))
             {
@@ -1031,7 +1031,7 @@ public class WiaService : IScannerService, IDisposable
         catch (Exception ex)
         {
             _logger.LogError(ex, " Error iniciando escaneo WIA");
-            await AutoCancelScanWithRecovery($" Error escaneando con {device.Name}.\n\n🔧 {ex.Message}\n\nPor favor selecciona otro dispositivo.");
+            await AutoCancelScanWithRecovery($" Error escaneando con {device.Name}.\n\n {ex.Message}\n\nPor favor selecciona otro dispositivo.");
             return false;
         }
         finally
@@ -1055,7 +1055,7 @@ public class WiaService : IScannerService, IDisposable
                 if (_connectivityCache.TryGetValue(deviceId, out var cached) && !cached.IsConnected)
                 {
                     connectTimeout = _disconnectedDeviceTimeout; // Timeout más corto para dispositivos problemáticos
-                    _logger.LogDebug("⚡ Usando timeout reducido para dispositivo potencialmente desconectado");
+                    _logger.LogDebug(" Usando timeout reducido para dispositivo potencialmente desconectado");
                 }
                 
                 var connectionTask = Task.Run(() =>
@@ -1101,10 +1101,10 @@ public class WiaService : IScannerService, IDisposable
             
             var errorMessage = (int)comEx.ErrorCode switch
             {
-                unchecked((int)0x80210005) => $"📱 {device.Name} está ocupado.\n\n📱 Por favor:\n• Cierra otras aplicaciones de escaneo\n• O selecciona otro dispositivo",
-                unchecked((int)0x80210006) => $"📱 {device.Name} está en uso.\n\n📱 Está siendo usado por otra aplicación.\nSelecciona otro dispositivo.", 
+                unchecked((int)0x80210005) => $" {device.Name} está ocupado.\n\n Por favor:\n• Cierra otras aplicaciones de escaneo\n• O selecciona otro dispositivo",
+                unchecked((int)0x80210006) => $" {device.Name} está en uso.\n\n Está siendo usado por otra aplicación.\nSelecciona otro dispositivo.", 
                 unchecked((int)0x80210064) => $"🔌 {device.Name} está desconectado.\n\n🔌 Por favor:\n• Verifica la conexión del dispositivo\n• Enciende el dispositivo\n• O selecciona otro dispositivo",
-                _ => $" Error conectando a {device.Name}.\n\n🔧 Código: 0x{comEx.ErrorCode:X8}\nPor favor selecciona otro dispositivo."
+                _ => $" Error conectando a {device.Name}.\n\n Código: 0x{comEx.ErrorCode:X8}\nPor favor selecciona otro dispositivo."
             };
             
             ScanError?.Invoke(this, errorMessage);
@@ -1113,7 +1113,7 @@ public class WiaService : IScannerService, IDisposable
         catch (Exception ex)
         {
             _logger.LogError(ex, " Error general conectando a dispositivo WIA: {DeviceName}", device.Name);
-            ScanError?.Invoke(this, $" {device.Name} no está disponible.\n\n🔧 Error: {ex.Message}\n\nPor favor selecciona otro dispositivo.");
+            ScanError?.Invoke(this, $" {device.Name} no está disponible.\n\n Error: {ex.Message}\n\nPor favor selecciona otro dispositivo.");
             return false;
         }
     }
@@ -1137,7 +1137,7 @@ public class WiaService : IScannerService, IDisposable
             var transferTask = Task.Run(() =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                return (ImageFile)item.Transfer(format); // ⚠️ Aquí fallará si no hay hoja
+                return (ImageFile)item.Transfer(format); //  Aquí fallará si no hay hoja
             }, cancellationToken);
 
             var imageFile = await transferTask.WaitAsync(_scanTimeout, cancellationToken);
@@ -1151,7 +1151,7 @@ public class WiaService : IScannerService, IDisposable
         {
             _logger.LogWarning(" El escáner no está listo para transferir (0x80210003)");
             ScanError?.Invoke(this,
-                $"⚠️ El escáner no está listo.\n\n🔍 Asegúrate de que hay una hoja en la bandeja.\n🔌 Verifica que esté encendido y conectado.\n📄 Si el escáner tiene ADF, coloca una hoja antes de escanear.");
+                $" El escáner no está listo.\n\n🔍 Asegúrate de que hay una hoja en la bandeja.\n🔌 Verifica que esté encendido y conectado.\n📄 Si el escáner tiene ADF, coloca una hoja antes de escanear.");
             throw;
         }
         catch (TimeoutException)
@@ -1235,7 +1235,7 @@ public class WiaService : IScannerService, IDisposable
     {
         try
         {
-            _logger.LogWarning("🚨 AUTO-CANCELACIÓN: {Reason}", reason);
+            _logger.LogWarning(" AUTO-CANCELACIÓN: {Reason}", reason);
             
             _scanCancellationSource?.Cancel();
             _isScanning = false;

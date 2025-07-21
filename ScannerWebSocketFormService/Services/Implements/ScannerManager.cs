@@ -10,13 +10,6 @@ public class ScannerManager : IScannerManager
     private readonly IScannerService _wiaService;
     private readonly WiaService _wiaServiceTyped; //  Referencia tipada para métodos específicos
     private readonly ILogger<ScannerManager> _logger;
-    private readonly object _refreshLock = new();
-    private DateTime _lastFullRefresh = DateTime.MinValue;
-    private readonly TimeSpan _minimumRefreshInterval = TimeSpan.FromSeconds(2); // ⚡ Reducido de 3 a 2 segundos
-
-    // Cache de dispositivos para comparación
-    private List<ScannerDevice> _lastKnownDevices = new();
-    private DateTime _lastCacheUpdate = DateTime.MinValue;
 
     //  Cache de conectividad para evitar verificaciones repetitivas
     private readonly Dictionary<string, (bool IsConnected, DateTime CheckTime)> _connectivityCache = new();
@@ -79,12 +72,12 @@ public class ScannerManager : IScannerManager
         {
             if (DateTime.Now - cached.CheckTime < _connectivityCacheExpiry)
             {
-                _logger.LogDebug("⚡ Cache conectividad para {DeviceName}: {IsConnected}", device.Name, cached.IsConnected);
+                _logger.LogDebug(" Cache conectividad para {DeviceName}: {IsConnected}", device.Name, cached.IsConnected);
                 return cached.IsConnected;
             }
         }
 
-        _logger.LogInformation("⚡ Verificación rápida de conectividad: {DeviceName} ({Type})", device.Name, device.Type);
+        _logger.LogInformation(" Verificación rápida de conectividad: {DeviceName} ({Type})", device.Name, device.Type);
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
         bool isConnected = false;
@@ -106,7 +99,7 @@ public class ScannerManager : IScannerManager
             _connectivityCache[deviceKey] = (isConnected, DateTime.Now);
 
             stopwatch.Stop();
-            _logger.LogInformation("⚡ Conectividad {DeviceName}: {Result} ({ElapsedMs}ms)", 
+            _logger.LogInformation(" Conectividad {DeviceName}: {Result} ({ElapsedMs}ms)", 
                 device.Name, 
                 isConnected ? " CONECTADO" : " DESCONECTADO", 
                 stopwatch.ElapsedMilliseconds);
@@ -158,11 +151,11 @@ public class ScannerManager : IScannerManager
     {
         try
         {
-            _logger.LogInformation("🚀 Iniciando escaneo con verificación previa: {DeviceName} (Tipo: {Type})", 
+            _logger.LogInformation(" Iniciando escaneo con verificación previa: {DeviceName} (Tipo: {Type})", 
                 device.Name, device.Type);
 
             //  NUEVA: Verificación rápida de conectividad ANTES del escaneo
-            _logger.LogInformation("⚡ Verificando conectividad previa al escaneo...");
+            _logger.LogInformation(" Verificando conectividad previa al escaneo...");
             var isConnected = await QuickConnectivityCheckAsync(device);
 
             if (!isConnected)
@@ -204,7 +197,7 @@ public class ScannerManager : IScannerManager
             {
                 try
                 {
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8)); // ⚡ 8 segundos máximo
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8)); //  8 segundos máximo
                     return await _wiaService.GetAvailableDevicesAsync() ?? new List<ScannerDevice>();
                 }
                 catch (Exception ex)
@@ -219,7 +212,7 @@ public class ScannerManager : IScannerManager
             {
                 try
                 {
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6)); // ⚡ 6 segundos máximo
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6)); //  6 segundos máximo
                     return await _twainService.GetAvailableDevicesAsync() ?? new List<ScannerDevice>();
                 }
                 catch (Exception ex)
@@ -278,11 +271,11 @@ public class ScannerManager : IScannerManager
             {
                 seenDevices.Add(deviceKey);
                 uniqueDevices.Add(device);
-                _logger.LogDebug("   Agregado: [{Type}] {DisplayName}", device.Type, device.DisplayName);
+                _logger.LogDebug("Agregado: [{Type}] {DisplayName}", device.Type, device.DisplayName);
             }
             else
             {
-                _logger.LogDebug("   Duplicado exacto eliminado: [{Type}] {DisplayName}", device.Type, device.DisplayName);
+                _logger.LogDebug("Duplicado exacto eliminado: [{Type}] {DisplayName}", device.Type, device.DisplayName);
             }
         }
     
@@ -311,7 +304,7 @@ public class ScannerManager : IScannerManager
             _logger.LogDebug("Paso 2: Liberando recursos...");
             GC.Collect();
             GC.WaitForPendingFinalizers();
-            await Task.Delay(400); // ⚡ Reducido de 500 a 400ms
+            await Task.Delay(400); //  Reducido de 500 a 400ms
 
             //  PASO 3: Reinicializar solo WIA (TWAIN se mantiene si funciona)
             _logger.LogDebug("Paso 3: Reinicializando servicios...");
@@ -324,7 +317,7 @@ public class ScannerManager : IScannerManager
                 try
                 {
                     await _wiaService.InitializeAsync();
-                    await Task.Delay(600); // ⚡ Reducido de 800 a 600ms
+                    await Task.Delay(600); //  Reducido de 800 a 600ms
                     _logger.LogDebug(" WIA reinicializado");
                 }
                 catch (Exception ex)
@@ -342,13 +335,13 @@ public class ScannerManager : IScannerManager
                     {
                         _logger.LogDebug("TWAIN no inicializado - inicializando...");
                         await _twainService.InitializeAsync();
-                        await Task.Delay(1000); // ⚡ Reducido de 1200 a 1000ms
+                        await Task.Delay(1000); //  Reducido de 1200 a 1000ms
                         _logger.LogDebug(" TWAIN inicializado");
                     }
                     else
                     {
                         _logger.LogDebug(" TWAIN ya funcionando - conservando estado");
-                        await Task.Delay(500); // ⚡ Reducido de 600 a 500ms
+                        await Task.Delay(500); //  Reducido de 600 a 500ms
                     }
                 }
                 catch (Exception ex)
@@ -362,7 +355,7 @@ public class ScannerManager : IScannerManager
             //  PASO 4: Obtener dispositivos con timeout más agresivo
             _logger.LogDebug("Paso 4: Obteniendo dispositivos...");
 
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(12)); // ⚡ Reducido de 15 a 12 segundos
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(12)); //  Reducido de 15 a 12 segundos
             
             var deviceTasks = new List<Task<List<ScannerDevice>>>();
             

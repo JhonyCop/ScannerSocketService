@@ -321,8 +321,8 @@ public class WebSocketService : IWebSocketService, IDisposable
                         message = "Conectado al servicio de scanner",
                         isScanningGlobally = _isScanningGlobally,
                         currentScanningClient = _currentScanningClientId,
-                        isCheckingConnectivity = _isCheckingConnectivity, //  NUEVO
-                        currentConnectivityDevice = _currentConnectivityCheckDevice //  NUEVO
+                        isCheckingConnectivity = _isCheckingConnectivity, 
+                        currentConnectivityDevice = _currentConnectivityCheckDevice 
                     });
 
                     _ = Task.Run(() => HandleClient(clientInfo));

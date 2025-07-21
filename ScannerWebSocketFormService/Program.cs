@@ -11,7 +11,7 @@ namespace ScannerWebSocketFormService
         static void Main()
         {
             // Agregar al inicio de Windows
-             //AgregarAlInicio();
+             AgregarAlInicio();
 
             // Configuración estándar del formulario
             ApplicationConfiguration.Initialize();

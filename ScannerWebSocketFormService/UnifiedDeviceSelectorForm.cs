@@ -22,11 +22,6 @@ public partial class UnifiedDeviceSelectorForm : Form
     private ProgressBar _progressBar;
     private Panel _buttonPanel;
 
-    public UnifiedDeviceSelectorForm(List<ScannerDevice> devices)
-        : this(devices, null)
-    {
-    }
-
     public UnifiedDeviceSelectorForm(List<ScannerDevice> devices, Func<Task<List<ScannerDevice>>>? refreshCallback)
     {
         _initialDevices = devices ?? new List<ScannerDevice>();
@@ -128,8 +123,22 @@ public partial class UnifiedDeviceSelectorForm : Form
 
     private void ConfigureForm()
     {
+        // Configuración para centrar y hacer modal
+        this.StartPosition = FormStartPosition.CenterScreen;
+        this.TopMost = true;
+        this.ShowInTaskbar = true;
+        this.FormBorderStyle = FormBorderStyle.FixedDialog;
+        this.MaximizeBox = false;
+        this.MinimizeBox = false;
+        
+        // Configuración de botones
         this.AcceptButton = _buttonSelect;
         this.CancelButton = _buttonCancel;
+        
+        // Asegurar que el formulario se mantenga en primer plano
+        this.WindowState = FormWindowState.Normal;
+        this.BringToFront();
+        this.Focus();
     }
 
     private void LoadDevicesOptimized()
@@ -252,7 +261,7 @@ public partial class UnifiedDeviceSelectorForm : Form
             }
             else
             {
-                _labelStatus.Text = "⏰ Búsqueda tomó demasiado tiempo - usando dispositivos previos";
+                _labelStatus.Text = " Búsqueda tomó demasiado tiempo - usando dispositivos previos";
                 _labelStatus.ForeColor = Color.FromArgb(255, 140, 0);
                 updatedDevices = _currentDevices;
             }
@@ -300,9 +309,9 @@ public partial class UnifiedDeviceSelectorForm : Form
     {
         return type switch
         {
-            ScannerType.TWAIN => "🖨️",
-            ScannerType.WIA => "📄",
-            _ => "📱"
+            ScannerType.TWAIN => "",
+            ScannerType.WIA => "",
+            _ => ""
         };
     }
 
@@ -382,11 +391,37 @@ public partial class UnifiedDeviceSelectorForm : Form
     protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
-        _listBoxDevices.Focus();
         
-        if (this.Owner == null)
+        // Asegurar que el formulario esté centrado y en primer plano
+        this.CenterToScreen();
+        this.TopMost = true;
+        this.BringToFront();
+        this.Activate();
+        
+        // Dar foco al ListBox
+        _listBoxDevices.Focus();
+    }
+
+    protected override void OnActivated(EventArgs e)
+    {
+        base.OnActivated(e);
+        
+        // Mantener el formulario en primer plano cuando se activa
+        this.TopMost = true;
+        this.BringToFront();
+    }
+
+    protected override void SetVisibleCore(bool value)
+    {
+        base.SetVisibleCore(value);
+        
+        if (value)
         {
-            this.CenterToScreen();
+            // Asegurar que el formulario esté en primer plano al hacerse visible
+            this.TopMost = true;
+            this.WindowState = FormWindowState.Normal;
+            this.BringToFront();
+            this.Focus();
         }
     }
 }
