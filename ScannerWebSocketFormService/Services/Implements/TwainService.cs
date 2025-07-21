@@ -1,11 +1,9 @@
-﻿using System.Diagnostics;
-using System.Reflection;
+﻿using System.Reflection;
 using Microsoft.Extensions.Logging;
 using NTwain;
 using ScannerWebSocketFormService.Services.Interface;
 using ScannerWebSocketFormService.Models;
 using NTwain.Data;
-using WIA;
 using Timer = System.Threading.Timer;
 
 namespace ScannerWebSocketFormService.Services.Implements;
