@@ -10,6 +10,7 @@ namespace ScannerWebSocketFormService;
 
 public partial class Form1 : Form
 {
+    #region Fields and Constants
     private readonly ILogger<Form1> _logger;
     private readonly ITwainService _twainService;
     private readonly WiaService _wiaService;
@@ -20,18 +21,20 @@ public partial class Form1 : Form
     private readonly ServiceProvider _serviceProvider;
     private readonly IScannerManager _scannerManager;
     
-    private NotifyIcon trayIcon;
     private IScannerService? _currentScannerService;
     private DateTime? _lastScanAttempt = null;
     private DateTime? _lastScanError = null;
-    private readonly TimeSpan _scanCooldown = TimeSpan.FromSeconds(2);  //de 3 a 2 segundos
-    private readonly TimeSpan _errorCooldown = TimeSpan.FromSeconds(4);  //de 5 a 4 segundos
-    private int _consecutiveCancellations = 0;
-    private const int MAX_ALLOWED_CANCELLATIONS = 3; // Permitir 3 cancelaciones seguidas
     private DateTime? _lastUserCancellation = null;
-    private bool _lastScanWasSuccessful = true;
     
-     public Form1()
+    private readonly TimeSpan _scanCooldown = TimeSpan.FromSeconds(2);
+    private readonly TimeSpan _errorCooldown = TimeSpan.FromSeconds(4);
+    private int _consecutiveCancellations = 0;
+    private const int MAX_ALLOWED_CANCELLATIONS = 3;
+    private bool _lastScanWasSuccessful = true;
+    #endregion
+
+    #region Constructor and Initialization
+    public Form1()
     {
         InitializeComponent();
         
@@ -48,123 +51,8 @@ public partial class Form1 : Form
         
         ConfigureEvents();
         ConfigureSystemStateHandlers();
-        ConfigureTrayIcon();
         
         _ = InitializeAsync();
-    }
-
-    private void ConfigureTrayIcon()
-    {
-        try
-        {
-            trayIcon = new NotifyIcon();
-
-            bool iconLoaded = false;
-
-            if (!iconLoaded)
-            {
-                try
-                {
-                    string resourceName = "ScannerWebSocketFormService.Utils.Icon.LeadRoad.ico";
-                    using (Stream iconStream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName))
-                    {
-                        if (iconStream != null)
-                        {
-                            trayIcon.Icon = new Icon(iconStream);
-                            _logger.LogInformation("Ícono cargado desde recurso embebido");
-                            iconLoaded = true;
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogDebug(ex, "No se pudo cargar ícono embebido");
-                }
-            }
-
-            if (!iconLoaded)
-            {
-                try
-                {
-                    string[] possiblePaths = {
-                        Path.Combine("Utils", "Icon", "LeadRoad.ico"),
-                        Path.Combine(Application.StartupPath, "Utils", "Icon", "LeadRoad.ico"),
-                        Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Utils", "Icon", "LeadRoad.ico"),
-                        "scanner.ico"
-                    };
-
-                    foreach (string iconPath in possiblePaths)
-                    {
-                        if (File.Exists(iconPath))
-                        {
-                            trayIcon.Icon = new Icon(iconPath);
-                            _logger.LogInformation("Ícono cargado desde archivo: {IconPath}", iconPath);
-                            iconLoaded = true;
-                            break;
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogDebug(ex, "No se pudo cargar ícono desde archivo");
-                }
-            }
-
-            if (!iconLoaded)
-            {
-                trayIcon.Icon = SystemIcons.Application;
-                _logger.LogWarning("Usando ícono del sistema como fallback");
-            }
-
-            trayIcon.Text = "Scanner WebSocket Service";
-            trayIcon.Visible = true;
-
-            ContextMenuStrip contextMenu = new ContextMenuStrip();
-            contextMenu.Items.Add("Mostrar", null, (s, ev) => ShowForm());
-            contextMenu.Items.Add("-");
-            contextMenu.Items.Add("Estado del servicio", null, (s, ev) => ShowServiceStatus());
-            contextMenu.Items.Add("-");
-            contextMenu.Items.Add("Salir", null, (s, ev) => Application.Exit());
-            trayIcon.ContextMenuStrip = contextMenu;
-
-            trayIcon.DoubleClick += (s, ev) => ShowServiceStatus();
-
-            trayIcon.BalloonTipTitle = "Servicio de Escaneo";
-            trayIcon.BalloonTipText = "El servicio se ha iniciado correctamente en ws://localhost:9000";
-            trayIcon.ShowBalloonTip(3000);
-
-            _logger.LogInformation("NotifyIcon configurado correctamente");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error configurando NotifyIcon");
-        }
-    }
-    
-    private void ShowForm()
-    {
-        this.WindowState = FormWindowState.Normal;
-        this.Show();
-        this.Activate();
-    }
-
-    private async void ShowServiceStatus()
-    {
-        try
-        {
-            var systemState = _systemStateManager.GetCurrentState();
-            var message = $"\n" +
-                          $"TWAIN: {(_twainService.IsScanning ? "Escaneando" : "Listo")}\n" +
-                          $"WIA: {(_wiaService.IsScanning ? "Escaneando" : "Listo")}";
-        
-            trayIcon.BalloonTipTitle = "Estado del Servicio";
-            trayIcon.BalloonTipText = message;
-            trayIcon.ShowBalloonTip(5000);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error mostrando estado del servicio");
-        }
     }
 
     private ServiceProvider ConfigureServices()  
@@ -188,13 +76,33 @@ public partial class Form1 : Form
     
         services.AddSingleton<WiaService, WiaService>();
         services.AddSingleton<IScannerService>(provider => provider.GetRequiredService<WiaService>());
-    
         services.AddSingleton<IImageProcessor, ImageProcessor>();
         services.AddSingleton<IScannerManager, ScannerManager>();
     
         return services.BuildServiceProvider();
     }
-    
+
+    private async Task InitializeAsync()
+    {
+        try
+        {
+            ConfigureHiddenForm();
+            _tempFileManager.Initialize();
+            await _twainService.InitializeAsync();
+            await _wiaService.InitializeAsync();
+            await _webSocketService.StartAsync();
+            
+            var initialState = _systemStateManager.GetCurrentState();
+            _logger.LogInformation("Aplicación inicializada correctamente - Estado del sistema: {State}", initialState);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error inicializando aplicación");
+        }
+    }
+    #endregion
+
+    #region Event Configuration
     private void ConfigureEvents()
     {
         // Eventos TWAIN
@@ -207,124 +115,124 @@ public partial class Form1 : Form
         _wiaService.ScanCompleted += OnWiaScanCompleted;
         _wiaService.ScanError += OnWiaScanError;
 
-        //  NUEVOS: Eventos de verificación de conectividad WIA
+        // Eventos de verificación de conectividad WIA
         _wiaService.QuickConnectivityCheckStarted += OnQuickConnectivityCheckStarted;
         _wiaService.QuickConnectivityCheckFailed += OnQuickConnectivityCheckFailed;
         _wiaService.DeviceConnectivityVerified += OnDeviceConnectivityVerified;
 
         _webSocketService.SetImageProcessor(_imageProcessor);
-
-        //  Handler de escaneo con verificación previa rápida
-        _webSocketService.RegisterScanHandler(async () =>
-        {
-            if (ShouldBlockScanDueToCooldown())
-            {
-                var remainingTime = GetRemainingCooldownTime();
-                string reason;
-                
-                if (_consecutiveCancellations >= MAX_ALLOWED_CANCELLATIONS)
-                {
-                    reason = $"Demasiadas cancelaciones consecutivas ({_consecutiveCancellations})";
-                }
-                else if (_lastScanWasSuccessful)
-                {
-                    reason = "Límite de velocidad de escaneo";
-                }
-                else
-                {
-                    reason = "Error reciente";
-                }
-                
-                _logger.LogWarning("Escaneo bloqueado por cooldown - {RemainingSeconds}s restantes. Razón: {Reason}", 
-                    remainingTime.TotalSeconds, reason);
-            
-                await _webSocketService.BroadcastMessageAsync(new {
-                    type = "scan_cooldown",
-                    message = $"Espera {remainingTime.TotalSeconds:F0} segundos antes de escanear nuevamente",
-                    remainingSeconds = remainingTime.TotalSeconds,
-                    reason = reason,
-                    consecutiveCancellations = _consecutiveCancellations,
-                    maxAllowedCancellations = MAX_ALLOWED_CANCELLATIONS
-                });
-
-                //  SOLUCIÓN: Resetear el estado del scanning para liberar la interfaz
-                await _webSocketService.ForceResetScanningState("Escaneo bloqueado por cooldown");
-                return;
-            }
-
-            _imageProcessor.ResetCancelFlag();
-
-            this.Invoke(new Action(async () =>
-            {
-                try
-                {
-                    var scanStarted = await ShowUnifiedDeviceSelectorAndScanAsync();
-            
-                    if (!scanStarted)
-                    {
-                        // El método ShowUnifiedDeviceSelectorAndScanAsync ya maneja el estado
-                        _logger.LogDebug("Escaneo no iniciado - estado ya manejado");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error en handler de escaneo");
-                    _lastScanWasSuccessful = false;
-                    _lastScanError = DateTime.Now;
-            
-                    await _webSocketService.BroadcastMessageAsync(new {
-                        type = "scan_error",
-                        message = $"Error inesperado: {ex.Message}"
-                    });
-            
-                    //  SOLUCIÓN: También resetear en caso de error
-                    await _webSocketService.ForceResetScanningState("Error en handler de escaneo");
-                }
-            }));
-        });
+        _webSocketService.RegisterScanHandler(HandleScanRequest);
 
         Load += OnFormLoad;
         FormClosed += OnFormClosed;
         FormClosing += OnFormClosing;
     }
 
-    //  NUEVOS: Manejadores de eventos de conectividad
-    private async void OnQuickConnectivityCheckStarted(object? sender, string deviceName)
+    private void ConfigureSystemStateHandlers()
     {
-        _logger.LogInformation(" Verificación de conectividad iniciada: {DeviceName}", deviceName);
-        
-        // Notificar al WebSocket sobre el inicio de la verificación
-        if (_webSocketService is WebSocketService webSocketTyped)
+        _systemStateManager.RegisterSuspendHandler(HandleSystemSuspend);
+        _systemStateManager.RegisterResumeHandler(HandleSystemResume);
+        _systemStateManager.RegisterSessionLockHandler(HandleSessionLock);
+        _systemStateManager.RegisterSessionUnlockHandler(HandleSessionUnlock);
+
+        _systemStateManager.PowerModeChanged += (sender, e) =>
         {
-            await webSocketTyped.NotifyConnectivityCheckStarted(deviceName);
+            _logger.LogInformation("Evento de modo de energía: {Mode}", e.Mode);
+        };
+
+        _systemStateManager.SessionSwitchOccurred += (sender, e) =>
+        {
+            _logger.LogInformation("Evento de cambio de sesión: {Reason}", e.Reason);
+        };
+    }
+    #endregion
+
+    #region Scan Request Handling
+    private async Task HandleScanRequest()
+    {
+        if (ShouldBlockScanDueToCooldown())
+        {
+            await HandleScanCooldown();
+            return;
         }
+
+        _imageProcessor.ResetCancelFlag();
+
+        this.Invoke(new Action(async () =>
+        {
+            try
+            {
+                var scanStarted = await ShowUnifiedDeviceSelectorAndScanAsync();
+            
+                if (!scanStarted)
+                {
+                    _logger.LogDebug("Escaneo no iniciado - estado ya manejado");
+                }
+            }
+            catch (Exception ex)
+            {
+                await HandleScanError(ex, "Error en handler de escaneo");
+            }
+        }));
     }
 
-    private async void OnQuickConnectivityCheckFailed(object? sender, string message)
+    private async Task HandleScanCooldown()
     {
-        _logger.LogWarning(" Verificación de conectividad falló: {Message}", message);
+        var remainingTime = GetRemainingCooldownTime();
+        string reason = GetCooldownReason();
         
-        if (_webSocketService is WebSocketService webSocketTyped)
-        {
-            await webSocketTyped.NotifyConnectivityCheckCompleted("Dispositivo", false, message);
-        }
-    }
-
-    private async void OnDeviceConnectivityVerified(object? sender, string message)
-    {
-        _logger.LogInformation(" Conectividad verificada: {Message}", message);
-        
-        if (_webSocketService is WebSocketService webSocketTyped)
-        {
-            await webSocketTyped.NotifyConnectivityCheckCompleted("Dispositivo", true, message);
-        }
-    }
+        _logger.LogWarning("Escaneo bloqueado por cooldown - {RemainingSeconds}s restantes. Razón: {Reason}", 
+            remainingTime.TotalSeconds, reason);
     
+        await _webSocketService.BroadcastMessageAsync(new {
+            type = "scan_cooldown",
+            message = $"Espera {remainingTime.TotalSeconds:F0} segundos antes de escanear nuevamente",
+            remainingSeconds = remainingTime.TotalSeconds,
+            reason = reason,
+            consecutiveCancellations = _consecutiveCancellations,
+            maxAllowedCancellations = MAX_ALLOWED_CANCELLATIONS
+        });
+
+        await _webSocketService.ForceResetScanningState("Escaneo bloqueado por cooldown");
+    }
+
+    private string GetCooldownReason()
+    {
+        if (_consecutiveCancellations >= MAX_ALLOWED_CANCELLATIONS)
+        {
+            return $"Demasiadas cancelaciones consecutivas ({_consecutiveCancellations})";
+        }
+        else if (_lastScanWasSuccessful)
+        {
+            return "Límite de velocidad de escaneo";
+        }
+        else
+        {
+            return "Error reciente";
+        }
+    }
+
+    private async Task HandleScanError(Exception ex, string context)
+    {
+        _logger.LogError(ex, context);
+        _lastScanWasSuccessful = false;
+        _lastScanError = DateTime.Now;
+
+        await _webSocketService.BroadcastMessageAsync(new {
+            type = "scan_error",
+            message = $"Error inesperado: {ex.Message}"
+        });
+
+        await _webSocketService.ForceResetScanningState(context);
+    }
+    #endregion
+
+    #region Cooldown Management
     private bool ShouldBlockScanDueToCooldown()
     {
         var now = DateTime.Now;
 
-        //  NUEVO: No aplicar cooldown por cancelaciones del usuario (hasta 3 veces)
+        // No aplicar cooldown por cancelaciones del usuario (hasta 3 veces)
         if (_consecutiveCancellations < MAX_ALLOWED_CANCELLATIONS)
         {
             _logger.LogDebug("Cancelaciones consecutivas: {Count}/{Max} - No aplicar cooldown", 
@@ -332,7 +240,7 @@ public partial class Form1 : Form
             return false;
         }
 
-        // Solo aplicar cooldown si hay muchas cancelaciones consecutivas
+        // Cooldown por demasiadas cancelaciones consecutivas
         if (_consecutiveCancellations >= MAX_ALLOWED_CANCELLATIONS && _lastUserCancellation.HasValue)
         {
             var timeSinceLastCancellation = now - _lastUserCancellation.Value;
@@ -367,8 +275,6 @@ public partial class Form1 : Form
         return false;
     }
 
-
-    
     private TimeSpan GetRemainingCooldownTime()
     {
         var now = DateTime.Now;
@@ -403,43 +309,19 @@ public partial class Form1 : Form
         return TimeSpan.Zero;
     }
 
-    private void ConfigureSystemStateHandlers()
+    private void ResetCancellationCount()
     {
-        _systemStateManager.RegisterSuspendHandler(async () =>
+        if (_consecutiveCancellations > 0)
         {
-            _logger.LogWarning("Ejecutando limpieza por suspensión del sistema");
-            await HandleSystemSuspend();
-        });
-
-        _systemStateManager.RegisterResumeHandler(async () =>
-        {
-            _logger.LogInformation("Ejecutando reinicialización por reanudación del sistema");
-            await HandleSystemResume();
-        });
-
-        _systemStateManager.RegisterSessionLockHandler(async () =>
-        {
-            _logger.LogInformation("Ejecutando limpieza por bloqueo de sesión");
-            await HandleSessionLock();
-        });
-
-        _systemStateManager.RegisterSessionUnlockHandler(async () =>
-        {
-            _logger.LogInformation("Verificando estado después de desbloqueo de sesión");
-            await HandleSessionUnlock();
-        });
-
-        _systemStateManager.PowerModeChanged += (sender, e) =>
-        {
-            _logger.LogInformation("Evento de modo de energía: {Mode}", e.Mode);
-        };
-
-        _systemStateManager.SessionSwitchOccurred += (sender, e) =>
-        {
-            _logger.LogInformation("Evento de cambio de sesión: {Reason}", e.Reason);
-        };
+            _logger.LogInformation("Reseteando contador de cancelaciones: {PreviousCount} -> 0", 
+                _consecutiveCancellations);
+            _consecutiveCancellations = 0;
+            _lastUserCancellation = null;
+        }
     }
+    #endregion
 
+    #region System State Management
     private async Task HandleSystemSuspend()
     {
         try
@@ -485,7 +367,7 @@ public partial class Form1 : Form
             _logger.LogInformation("Sistema reanudado después de {Duration}", 
                 suspendDuration?.ToString(@"hh\:mm\:ss") ?? "tiempo desconocido");
         
-            await Task.Delay(2000); // de 3000 a 2000ms
+            await Task.Delay(2000);
             await CleanAllState();
             await ReinitializeServices();
             _imageProcessor.ResetCancelFlag();
@@ -624,185 +506,59 @@ public partial class Form1 : Form
             });
         }
     }
+    #endregion
 
-    private async Task InitializeAsync()
-    {
-        try
-        {
-            ConfigureHiddenForm();
-            _tempFileManager.Initialize();
-            await _twainService.InitializeAsync();
-            await _wiaService.InitializeAsync();
-            await _webSocketService.StartAsync();
-            
-            var initialState = _systemStateManager.GetCurrentState();
-            _logger.LogInformation("Aplicación inicializada correctamente - Estado del sistema: {State}", initialState);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error inicializando aplicación");
-        }
-    }
-
-    //  Mostrar selector con verificación rápida de conectividad
+    #region Device Management
     private async Task<bool> ShowUnifiedDeviceSelectorAndScanAsync()
     {
         try
         {
             if (_systemStateManager.IsSystemSuspended)
             {
-                _logger.LogWarning("Escaneo bloqueado - Sistema en estado de suspensión");
-                await _webSocketService.BroadcastMessageAsync(new {
-                    type = "scan_blocked_system_state",
-                    message = "Sistema en proceso de suspensión/reanudación - Inténtalo en unos momentos"
-                });
-                
-                await _webSocketService.ForceResetScanningState("Sistema en suspensión");
+                await HandleSystemSuspendedScan();
                 return false;
             }
 
-            _imageProcessor.ClearPages();
-            _tempFileManager.CleanupAll();
-
-            await _webSocketService.BroadcastMessageAsync(new {
-                type = "scan_started",
-                message = " Iniciando búsqueda rápida de dispositivos...",
-                systemState = _systemStateManager.GetCurrentState().ToString()
-            });
+            await PrepareForScan();
 
             var allDevices = await GetAllAvailableDevicesOptimized();
 
             if (allDevices.Count == 0)
             {
-                _logger.LogWarning("No se encontraron dispositivos de escaneo");
-                
-                MessageBox.Show(
-                    "No hay dispositivos de escáner conectados al ordenador.\n\n" +
-                    "Por favor:\n" +
-                    "• Conecta el escáner via USB\n" +
-                    "• Verifica que esté encendido\n" +
-                    "• Presiona 'Actualizar' después de conectar",
-                    "No hay dispositivos conectados",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning,
-                    MessageBoxDefaultButton.Button1,
-                    MessageBoxOptions.ServiceNotification
-                );
-                
-                await _webSocketService.BroadcastMessageAsync(new {
-                    type = "no_devices_found",
-                    message = " No hay dispositivos de escáner conectados al ordenador",
-                    details = "Verifica que el escáner esté conectado via USB o red y que los drivers estén instalados",
-                    suggestions = new[] {
-                        "Conecta el escáner via cable USB",
-                        "Verifica que el escáner esté encendido", 
-                        "Instala los drivers del fabricante",
-                        "Verifica la conexión de red (si es escáner de red)"
-                    }
-                });
-                
-                //  NO contar como cancelación - es falta de dispositivos
-                await _webSocketService.ForceResetScanningState("No hay dispositivos disponibles");
+                await HandleNoDevicesFound();
                 return false;
             }
 
-            await _webSocketService.BroadcastMessageAsync(new {
-                type = "devices_found",
-                count = allDevices.Count,
-                devices = allDevices.Select(d => new { d.DisplayName, Type = d.Type.ToString() }),
-                message = $" Encontrados {allDevices.Count} dispositivos. Selecciona uno..."
-            });
+            await NotifyDevicesFound(allDevices);
 
             var selectedDevice = await ShowUnifiedDeviceSelector(allDevices);
 
             if (selectedDevice == null)
             {
-                //  AQUÍ ES DONDE SE CANCELA - Incrementar contador
-                _consecutiveCancellations++;
-                _lastUserCancellation = DateTime.Now;
-                
-                _logger.LogInformation("Usuario canceló la selección del dispositivo (Cancelación #{Count})", 
-                    _consecutiveCancellations);
-                
-                await _imageProcessor.CancelScanAsync();
-                await _webSocketService.BroadcastMessageAsync(new {
-                    type = "scan_cancelled_by_user",
-                    message = "Escaneo cancelado por el usuario",
-                    consecutiveCancellations = _consecutiveCancellations,
-                    maxAllowed = MAX_ALLOWED_CANCELLATIONS
-                });
-                
-                //  IMPORTANTE: Resetear estado inmediatamente para evitar congelamiento
-                await _webSocketService.ForceResetScanningState("Cancelado por usuario");
-                
+                await HandleUserCancellation();
                 return false;
             }
 
-            //  Si selecciona dispositivo, resetear cancelaciones
             ResetCancellationCount();
 
-            // Verificación de conectividad...
-            await _webSocketService.BroadcastMessageAsync(new {
-                type = "device_connectivity_check",
-                device = selectedDevice.DisplayName,
-                message = $" Verificando conectividad de {selectedDevice.DisplayName}..."
-            });
-
-            _logger.LogInformation(" Verificando conectividad previa al escaneo: {DeviceName}", 
-                selectedDevice.DisplayName);
-            
-            var isConnected = await _scannerManager.QuickConnectivityCheckAsync(selectedDevice);
-            
+            var isConnected = await VerifyDeviceConnectivity(selectedDevice);
             if (!isConnected)
             {
-                _logger.LogError(" Dispositivo {DeviceName} no está conectado", selectedDevice.DisplayName);
-                
-                await _webSocketService.BroadcastMessageAsync(new {
-                    type = "device_not_connected",
-                    device = selectedDevice.DisplayName,
-                    message = $" El dispositivo '{selectedDevice.DisplayName}' no está conectado o no responde. Verifica la conexión e inténtalo nuevamente."
-                });
-
-                if (_webSocketService is WebSocketService webSocketTyped)
-                {
-                    await webSocketTyped.NotifyDeviceSelectionError($"Dispositivo '{selectedDevice.DisplayName}' no conectado");
-                }
-
-                //  NO contar como cancelación del usuario - es problema técnico
-                _lastScanWasSuccessful = false;
-                _lastScanError = DateTime.Now;
-                
-                await _webSocketService.ForceResetScanningState("Dispositivo no conectado");
+                await HandleDeviceNotConnected(selectedDevice);
                 return false;
             }
 
-            await _webSocketService.BroadcastMessageAsync(new {
-                type = "device_selected",
-                device = selectedDevice.DisplayName,
-                scannerType = selectedDevice.Type.ToString(),
-                message = $" {selectedDevice.DisplayName} verificado - iniciando escaneo..."
-            });
+            await NotifyDeviceSelected(selectedDevice);
 
             bool success = await StartScanWithDevice(selectedDevice);
 
             if (!success)
             {
-                _logger.LogError("Error iniciando el escaneo con dispositivo: {Device}", selectedDevice.DisplayName);
-                
-                await _webSocketService.BroadcastMessageAsync(new {
-                    type = "scan_error",
-                    message = " Error iniciando el escaneo - el dispositivo puede haberse desconectado"
-                });
-
-                //  Error técnico, no cancelación del usuario
-                _lastScanWasSuccessful = false;
-                _lastScanError = DateTime.Now;
-                
-                await _imageProcessor.CancelScanAsync();
+                await HandleScanStartError(selectedDevice);
                 return false;
             }
 
-            //  Escaneo iniciado exitosamente
+            // Escaneo iniciado exitosamente
             _lastScanWasSuccessful = true;
             _lastScanAttempt = DateTime.Now;
             
@@ -810,44 +566,178 @@ public partial class Form1 : Form
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error en selector de dispositivos");
-            
-            await _webSocketService.BroadcastMessageAsync(new {
-                type = "error",
-                message = $" Error: {ex.Message}"
-            });
-
-            //  Error técnico, no cancelación del usuario
-            _lastScanWasSuccessful = false;
-            _lastScanError = DateTime.Now;
-
-            try
-            {
-                await _imageProcessor.CancelScanAsync();
-                await _webSocketService.ForceResetScanningState("Error en selector de dispositivos");
-            }
-            catch (Exception cancelEx)
-            {
-                _logger.LogError(cancelEx, "Error cancelando escaneo después de excepción");
-            }
-            
+            await HandleDeviceSelectorError(ex);
             return false;
         }
     }
-    
-    private void ResetCancellationCount()
+
+    private async Task HandleSystemSuspendedScan()
     {
-        if (_consecutiveCancellations > 0)
+        _logger.LogWarning("Escaneo bloqueado - Sistema en estado de suspensión");
+        await _webSocketService.BroadcastMessageAsync(new {
+            type = "scan_blocked_system_state",
+            message = "Sistema en proceso de suspensión/reanudación - Inténtalo en unos momentos"
+        });
+        
+        await _webSocketService.ForceResetScanningState("Sistema en suspensión");
+    }
+
+    private async Task PrepareForScan()
+    {
+        _imageProcessor.ClearPages();
+        _tempFileManager.CleanupAll();
+
+        await _webSocketService.BroadcastMessageAsync(new {
+            type = "scan_started",
+            message = "Iniciando búsqueda rápida de dispositivos...",
+            systemState = _systemStateManager.GetCurrentState().ToString()
+        });
+    }
+
+    private async Task HandleNoDevicesFound()
+    {
+        _logger.LogWarning("No se encontraron dispositivos de escaneo");
+        
+        MessageBox.Show(
+            "No hay dispositivos de escáner conectados al ordenador.\n\n" +
+            "Por favor:\n" +
+            "• Conecta el escáner via USB\n" +
+            "• Verifica que esté encendido\n" +
+            "• Presiona 'Actualizar' después de conectar",
+            "No hay dispositivos conectados",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Warning,
+            MessageBoxDefaultButton.Button1,
+            MessageBoxOptions.ServiceNotification
+        );
+        
+        await _webSocketService.BroadcastMessageAsync(new {
+            type = "no_devices_found",
+            message = "No hay dispositivos de escáner conectados al ordenador",
+            details = "Verifica que el escáner esté conectado via USB o red y que los drivers estén instalados",
+            suggestions = new[] {
+                "Conecta el escáner via cable USB",
+                "Verifica que el escáner esté encendido", 
+                "Instala los drivers del fabricante",
+                "Verifica la conexión de red (si es escáner de red)"
+            }
+        });
+        
+        await _webSocketService.ForceResetScanningState("No hay dispositivos disponibles");
+    }
+
+    private async Task NotifyDevicesFound(List<ScannerDevice> allDevices)
+    {
+        await _webSocketService.BroadcastMessageAsync(new {
+            type = "devices_found",
+            count = allDevices.Count,
+            devices = allDevices.Select(d => new { d.DisplayName, Type = d.Type.ToString() }),
+            message = $"Encontrados {allDevices.Count} dispositivos. Selecciona uno..."
+        });
+    }
+
+    private async Task HandleUserCancellation()
+    {
+        _consecutiveCancellations++;
+        _lastUserCancellation = DateTime.Now;
+        
+        _logger.LogInformation("Usuario canceló la selección del dispositivo (Cancelación #{Count})", 
+            _consecutiveCancellations);
+        
+        await _imageProcessor.CancelScanAsync();
+        await _webSocketService.BroadcastMessageAsync(new {
+            type = "scan_cancelled_by_user",
+            message = "Escaneo cancelado por el usuario",
+            consecutiveCancellations = _consecutiveCancellations,
+            maxAllowed = MAX_ALLOWED_CANCELLATIONS
+        });
+        
+        await _webSocketService.ForceResetScanningState("Cancelado por usuario");
+    }
+
+    private async Task<bool> VerifyDeviceConnectivity(ScannerDevice selectedDevice)
+    {
+        await _webSocketService.BroadcastMessageAsync(new {
+            type = "device_connectivity_check",
+            device = selectedDevice.DisplayName,
+            message = $"Verificando conectividad de {selectedDevice.DisplayName}..."
+        });
+
+        _logger.LogInformation("Verificando conectividad previa al escaneo: {DeviceName}", 
+            selectedDevice.DisplayName);
+        
+        return await _scannerManager.QuickConnectivityCheckAsync(selectedDevice);
+    }
+
+    private async Task HandleDeviceNotConnected(ScannerDevice selectedDevice)
+    {
+        _logger.LogError("Dispositivo {DeviceName} no está conectado", selectedDevice.DisplayName);
+        
+        await _webSocketService.BroadcastMessageAsync(new {
+            type = "device_not_connected",
+            device = selectedDevice.DisplayName,
+            message = $"El dispositivo '{selectedDevice.DisplayName}' no está conectado o no responde. Verifica la conexión e inténtalo nuevamente."
+        });
+
+        if (_webSocketService is WebSocketService webSocketTyped)
         {
-            _logger.LogInformation("Reseteando contador de cancelaciones: {PreviousCount} -> 0", 
-                _consecutiveCancellations);
-            _consecutiveCancellations = 0;
-            _lastUserCancellation = null;
+            await webSocketTyped.NotifyDeviceSelectionError($"Dispositivo '{selectedDevice.DisplayName}' no conectado");
+        }
+
+        _lastScanWasSuccessful = false;
+        _lastScanError = DateTime.Now;
+        
+        await _webSocketService.ForceResetScanningState("Dispositivo no conectado");
+    }
+
+    private async Task NotifyDeviceSelected(ScannerDevice selectedDevice)
+    {
+        await _webSocketService.BroadcastMessageAsync(new {
+            type = "device_selected",
+            device = selectedDevice.DisplayName,
+            scannerType = selectedDevice.Type.ToString(),
+            message = $"{selectedDevice.DisplayName} verificado - iniciando escaneo..."
+        });
+    }
+
+    private async Task HandleScanStartError(ScannerDevice selectedDevice)
+    {
+        _logger.LogError("Error iniciando el escaneo con dispositivo: {Device}", selectedDevice.DisplayName);
+        
+        await _webSocketService.BroadcastMessageAsync(new {
+            type = "scan_error",
+            message = "Error iniciando el escaneo - el dispositivo puede haberse desconectado"
+        });
+
+        _lastScanWasSuccessful = false;
+        _lastScanError = DateTime.Now;
+        
+        await _imageProcessor.CancelScanAsync();
+    }
+
+    private async Task HandleDeviceSelectorError(Exception ex)
+    {
+        _logger.LogError(ex, "Error en selector de dispositivos");
+        
+        await _webSocketService.BroadcastMessageAsync(new {
+            type = "error",
+            message = $"Error: {ex.Message}"
+        });
+
+        _lastScanWasSuccessful = false;
+        _lastScanError = DateTime.Now;
+
+        try
+        {
+            await _imageProcessor.CancelScanAsync();
+            await _webSocketService.ForceResetScanningState("Error en selector de dispositivos");
+        }
+        catch (Exception cancelEx)
+        {
+            _logger.LogError(cancelEx, "Error cancelando escaneo después de excepción");
         }
     }
 
-
-    //  NUEVO: Obtener dispositivos con timeouts optimizados
     private async Task<List<ScannerDevice>> GetAllAvailableDevicesOptimized()
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -858,11 +748,10 @@ public partial class Form1 : Form
         {
             await _webSocketService.BroadcastMessageAsync(new {
                 type = "device_search_started",
-                message = " Buscando dispositivos conectados..."
+                message = "Buscando dispositivos conectados..."
             });
 
-            //  Timeout más agresivo para UI responsiva
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8)); // 8 segundos máximo
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
             
             var allDevices = await Task.Run(async () =>
             {
@@ -873,42 +762,18 @@ public partial class Form1 : Form
             
             _logger.LogInformation("=== DISPOSITIVOS OBTENIDOS EN {ElapsedMs}ms ===", stopwatch.ElapsedMilliseconds);
             
-            if (allDevices.Count > 0)
-            {
-                foreach (var device in allDevices)
-                {
-                    _logger.LogInformation("   {DisplayName} (Tipo: {Type})", device.DisplayName, device.Type);
-                }
-                
-                await _webSocketService.BroadcastMessageAsync(new {
-                    type = "device_search_success",
-                    count = allDevices.Count,
-                    message = $" Encontrados {allDevices.Count} dispositivos",
-                    elapsedMs = stopwatch.ElapsedMilliseconds,
-                    devices = allDevices.Select(d => new { d.DisplayName, Type = d.Type.ToString() })
-                });
-            }
-            else
-            {
-                _logger.LogWarning(" NO SE ENCONTRARON DISPOSITIVOS");
-                
-                await _webSocketService.BroadcastMessageAsync(new {
-                    type = "device_search_empty", 
-                    message = " No se encontraron dispositivos. Verifica las conexiones.",
-                    elapsedMs = stopwatch.ElapsedMilliseconds
-                });
-            }
+            await NotifyDeviceSearchResult(allDevices, stopwatch.ElapsedMilliseconds);
             
             return allDevices;
         }
         catch (OperationCanceledException)
         {
             stopwatch.Stop();
-            _logger.LogWarning(" Búsqueda de dispositivos cancelada por timeout ({ElapsedMs}ms)", stopwatch.ElapsedMilliseconds);
+            _logger.LogWarning("Búsqueda de dispositivos cancelada por timeout ({ElapsedMs}ms)", stopwatch.ElapsedMilliseconds);
             
             await _webSocketService.BroadcastMessageAsync(new {
                 type = "device_search_timeout",
-                message = " La búsqueda tomó demasiado tiempo - intenta nuevamente",
+                message = "La búsqueda tomó demasiado tiempo - intenta nuevamente",
                 elapsedMs = stopwatch.ElapsedMilliseconds
             });
             
@@ -921,11 +786,40 @@ public partial class Form1 : Form
             
             await _webSocketService.BroadcastMessageAsync(new {
                 type = "device_search_error",
-                message = $" Error buscando dispositivos: {ex.Message}",
+                message = $"Error buscando dispositivos: {ex.Message}",
                 elapsedMs = stopwatch.ElapsedMilliseconds
             });
             
             return new List<ScannerDevice>();
+        }
+    }
+
+    private async Task NotifyDeviceSearchResult(List<ScannerDevice> allDevices, long elapsedMs)
+    {
+        if (allDevices.Count > 0)
+        {
+            foreach (var device in allDevices)
+            {
+                _logger.LogInformation("   {DisplayName} (Tipo: {Type})", device.DisplayName, device.Type);
+            }
+            
+            await _webSocketService.BroadcastMessageAsync(new {
+                type = "device_search_success",
+                count = allDevices.Count,
+                message = $"Encontrados {allDevices.Count} dispositivos",
+                elapsedMs = elapsedMs,
+                devices = allDevices.Select(d => new { d.DisplayName, Type = d.Type.ToString() })
+            });
+        }
+        else
+        {
+            _logger.LogWarning("NO SE ENCONTRARON DISPOSITIVOS");
+            
+            await _webSocketService.BroadcastMessageAsync(new {
+                type = "device_search_empty", 
+                message = "No se encontraron dispositivos. Verifica las conexiones.",
+                elapsedMs = elapsedMs
+            });
         }
     }
 
@@ -970,7 +864,6 @@ public partial class Form1 : Form
             {
                 try
                 {
-                    //  Callback de refresh más rápido
                     Func<Task<List<ScannerDevice>>> refreshCallback = async () =>
                     {
                         try
@@ -982,7 +875,6 @@ public partial class Form1 : Form
                                 message = "🔄 Actualizando lista de dispositivos..."
                             });
 
-                            //  Timeout reducido para refresh desde UI
                             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
                             
                             var refreshedDevices = await Task.Run(async () =>
@@ -998,12 +890,12 @@ public partial class Form1 : Form
                         catch (OperationCanceledException)
                         {
                             _logger.LogWarning("Refresh desde UI cancelado por timeout");
-                            return devices; // Fallback a lista original
+                            return devices;
                         }
                         catch (Exception ex)
                         {
                             _logger.LogError(ex, "Error en refresh desde UI");
-                            return devices; // Fallback a lista original
+                            return devices;
                         }
                     };
 
@@ -1030,7 +922,41 @@ public partial class Form1 : Form
             return selectedDevice;
         });
     }
+    #endregion
 
+    #region Event Handlers - Connectivity
+    private async void OnQuickConnectivityCheckStarted(object? sender, string deviceName)
+    {
+        _logger.LogInformation("Verificación de conectividad iniciada: {DeviceName}", deviceName);
+        
+        if (_webSocketService is WebSocketService webSocketTyped)
+        {
+            await webSocketTyped.NotifyConnectivityCheckStarted(deviceName);
+        }
+    }
+
+    private async void OnQuickConnectivityCheckFailed(object? sender, string message)
+    {
+        _logger.LogWarning("Verificación de conectividad falló: {Message}", message);
+        
+        if (_webSocketService is WebSocketService webSocketTyped)
+        {
+            await webSocketTyped.NotifyConnectivityCheckCompleted("Dispositivo", false, message);
+        }
+    }
+
+    private async void OnDeviceConnectivityVerified(object? sender, string message)
+    {
+        _logger.LogInformation("Conectividad verificada: {Message}", message);
+        
+        if (_webSocketService is WebSocketService webSocketTyped)
+        {
+            await webSocketTyped.NotifyConnectivityCheckCompleted("Dispositivo", true, message);
+        }
+    }
+    #endregion
+
+    #region Event Handlers - TWAIN
     private async void OnTwainDataTransferred(object? sender, DataTransferredEventArgs e)
     {
         try
@@ -1053,25 +979,7 @@ public partial class Form1 : Form
         {
             _logger.LogInformation("ESCANEO TWAIN FINALIZADO");
             
-            if (_imageProcessor.PageCount > 0)
-            {
-                await _imageProcessor.SendPagesViaWebSocketAsync();
-            }
-            else
-            {
-                _logger.LogInformation("No se escanearon páginas");
-                await _webSocketService.BroadcastMessageAsync(new {
-                    type = "scan_completed",
-                    totalPages = 0,
-                    message = "Escaneo completado sin páginas"
-                });
-            }
-            
-            _imageProcessor.ClearPages();
-            _tempFileManager.CleanupAll();
-            await _webSocketService.ForceResetScanningState("Escaneo TWAIN completado");
-            
-            _logger.LogInformation("PROCESO COMPLETADO - LISTO PARA NUEVO ESCANEO");
+            await ProcessScanCompletion("TWAIN");
         }
         catch (Exception ex)
         {
@@ -1090,7 +998,9 @@ public partial class Form1 : Form
             message = "Página lista para transferir"
         });
     }
+    #endregion
 
+    #region Event Handlers - WIA
     private async void OnWiaImageScanned(object? sender, string filePath)
     {
         try
@@ -1113,25 +1023,7 @@ public partial class Form1 : Form
         {
             _logger.LogInformation("ESCANEO WIA FINALIZADO");
             
-            if (_imageProcessor.PageCount > 0)
-            {
-                await _imageProcessor.SendPagesViaWebSocketAsync();
-            }
-            else
-            {
-                _logger.LogInformation("No se escanearon páginas WIA");
-                await _webSocketService.BroadcastMessageAsync(new {
-                    type = "scan_completed",
-                    totalPages = 0,
-                    message = "Escaneo completado sin páginas"
-                });
-            }
-            
-            _imageProcessor.ClearPages();
-            _tempFileManager.CleanupAll();
-            await _webSocketService.ForceResetScanningState("Escaneo WIA completado");
-            
-            _logger.LogInformation("PROCESO COMPLETADO - LISTO PARA NUEVO ESCANEO");
+            await ProcessScanCompletion("WIA");
         }
         catch (Exception ex)
         {
@@ -1151,6 +1043,31 @@ public partial class Form1 : Form
         await _imageProcessor.CancelScanAsync();
     }
 
+    private async Task ProcessScanCompletion(string scannerType)
+    {
+        if (_imageProcessor.PageCount > 0)
+        {
+            await _imageProcessor.SendPagesViaWebSocketAsync();
+        }
+        else
+        {
+            _logger.LogInformation("No se escanearon páginas");
+            await _webSocketService.BroadcastMessageAsync(new {
+                type = "scan_completed",
+                totalPages = 0,
+                message = "Escaneo completado sin páginas"
+            });
+        }
+        
+        _imageProcessor.ClearPages();
+        _tempFileManager.CleanupAll();
+        await _webSocketService.ForceResetScanningState($"Escaneo {scannerType} completado");
+        
+        _logger.LogInformation("PROCESO COMPLETADO - LISTO PARA NUEVO ESCANEO");
+    }
+    #endregion
+
+    #region Form Configuration and Events
     private void ConfigureHiddenForm()
     {
         try
@@ -1209,7 +1126,9 @@ public partial class Form1 : Form
     {
         _logger.LogInformation("Aplicación cerrada");
     }
+    #endregion
 
+    #region Cleanup and Disposal
     private async Task CleanupResources()
     {
         try
@@ -1243,4 +1162,5 @@ public partial class Form1 : Form
             _logger.LogWarning(ex, "Error limpiando recursos");
         }
     }
+    #endregion
 }

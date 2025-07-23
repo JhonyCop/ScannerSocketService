@@ -34,7 +34,6 @@ public class TwainService : ITwainService, IDisposable
         _windowHandle = windowHandle;
         _webSocketService = webSocketService;
         
-        // Configurar detección de suspensión del sistema
         Microsoft.Win32.SystemEvents.PowerModeChanged += OnPowerModeChanged;
     }
 
@@ -51,7 +50,7 @@ public class TwainService : ITwainService, IDisposable
                 _logger.LogInformation("Sistema reanudando - Reinicializando TWAIN");
                 _ = Task.Run(async () =>
                 {
-                    await Task.Delay(3000); // Esperar 3 segundos para estabilización
+                    await Task.Delay(3000);
                     await HandleSystemResume();
                 });
                 break;
@@ -68,10 +67,8 @@ public class TwainService : ITwainService, IDisposable
                 StopScan();
             }
 
-            // Cerrar fuente actual de forma segura
             ClosePreviousSource();
             
-            // Cerrar sesión TWAIN de forma segura
             try
             {
                 if (_twain != null && _twain.IsDsmOpen)
@@ -96,10 +93,7 @@ public class TwainService : ITwainService, IDisposable
         {
             _logger.LogInformation("Reinicializando TWAIN después de reanudación del sistema");
             
-            // Limpiar estado completamente
             await ForceCleanState();
-            
-            // Reinicializar TWAIN
             await InitializeAsync();
             
             _logger.LogInformation("TWAIN reinicializado correctamente después de reanudación");
@@ -114,18 +108,14 @@ public class TwainService : ITwainService, IDisposable
     {
         try
         {
-            // Detener timer de timeout si existe
             _timeoutTimer?.Dispose();
             _timeoutTimer = null;
 
-            // Limpiar estado de escaneo
             _isScanning = false;
             _scanStartTime = null;
 
-            // Cerrar fuente anterior
             ClosePreviousSource();
 
-            // Limpiar sesión TWAIN
             try
             {
                 if (_twain != null)
@@ -142,7 +132,6 @@ public class TwainService : ITwainService, IDisposable
                 _logger.LogWarning(ex, "Error limpiando sesión TWAIN");
             }
 
-            // Notificar al WebSocket que el estado se ha limpiado
             await _webSocketService.ForceResetScanningState("TWAIN reinicializado después de suspensión");
 
             _logger.LogInformation("Estado de TWAIN limpiado completamente");
@@ -157,7 +146,6 @@ public class TwainService : ITwainService, IDisposable
     {
         try
         {
-            // Limpiar cualquier sesión anterior
             if (_twain != null)
             {
                 try
@@ -187,9 +175,7 @@ public class TwainService : ITwainService, IDisposable
             throw;
         }
     }
-    
-    
-    //Obtener Dispositivos conectados o instalados pero activos 
+
     public async Task<List<ScannerDevice>> GetAvailableDevicesAsync()
     {
         var devices = new List<ScannerDevice>();
@@ -213,9 +199,8 @@ public class TwainService : ITwainService, IDisposable
 
                     try
                     {
-                        // Intentar abrir la fuente para validar si está conectada
                         source.Open();
-                        source.Close(); // Cerrar inmediatamente si no da error
+                        source.Close();
 
                         devices.Add(new ScannerDevice
                         {
@@ -256,58 +241,6 @@ public class TwainService : ITwainService, IDisposable
         return devices;
     }
 
-
-    /*public async Task<List<ScannerDevice>> GetAvailableDevicesAsync()
-    {
-        var devices = new List<ScannerDevice>();
-        
-        try
-        {
-            if (_twain == null)
-            {
-                await InitializeAsync();
-            }
-
-            await EnsureTwainSessionOpen();
-
-            if (_twain != null)
-            {
-                var sources = _twain.GetSources();
-                foreach (var source in sources)
-                {
-                    devices.Add(new ScannerDevice
-                    {
-                        Id = source.Name,
-                        Name = source.Name,
-                        DisplayName = $"TWAIN-{source.Name}",
-                        Type = ScannerType.TWAIN,
-                        NativeDevice = source
-                    });
-                }
-            }
-
-            _logger.LogInformation("Encontrados {Count} dispositivos TWAIN", devices.Count);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error obteniendo dispositivos TWAIN");
-            
-            // Intentar reinicializar TWAIN en caso de error
-            try
-            {
-                await ForceCleanState();
-                await InitializeAsync();
-                return await GetAvailableDevicesAsync();
-            }
-            catch (Exception reinitEx)
-            {
-                _logger.LogError(reinitEx, "Error reinicializando TWAIN");
-            }
-        }
-
-        return devices;
-    }*/
-
     public async Task<bool> StartScanAsync()
     {
         if (_isScanning)
@@ -327,26 +260,22 @@ public class TwainService : ITwainService, IDisposable
             _isScanning = true;
             _scanStartTime = DateTime.Now;
             
-            // Configurar timeout de escaneo
             SetupScanTimeout();
-            
             ClosePreviousSource();
 
-            // Verificar y reabrir sesión TWAIN si es necesario
             await EnsureTwainSessionOpen();
 
             var src = _twain.ShowSourceSelector();
             if (src is null)
             {
                 _logger.LogInformation("Usuario canceló la selección del escáner");
-                await CleanupAfterCancel();
+                await CleanupScan("Escaneo TWAIN cancelado por usuario");
                 return false;
             }
 
             _currentSource = src;
             src.Open();
 
-            // Configurar scanner
             await ConfigureScanner(src);
 
             _logger.LogInformation("Abriendo interfaz del escáner...");
@@ -357,7 +286,7 @@ public class TwainService : ITwainService, IDisposable
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error al inicializar escáner");
-            await CleanupAfterError();
+            await CleanupScan("Error en escaneo TWAIN");
             return false;
         }
     }
@@ -392,12 +321,11 @@ public class TwainService : ITwainService, IDisposable
 
             await EnsureTwainSessionOpen();
 
-            // Refrescar la lista de dispositivos
             var sources = _twain.GetSources(); 
             if (!sources.Any())
             {
                 _logger.LogWarning("No se encontraron fuentes TWAIN disponibles. ¿El escáner está desconectado?");
-                await CleanupAfterError();
+                await CleanupScan("Error en escaneo TWAIN");
                 return false;
             }
 
@@ -405,7 +333,7 @@ public class TwainService : ITwainService, IDisposable
             if (selectedSource == null)
             {
                 _logger.LogError("No se encontró el dispositivo TWAIN: {DeviceId}", device.Id);
-                await CleanupAfterError();
+                await CleanupScan("Error en escaneo TWAIN");
                 return false;
             }
 
@@ -418,7 +346,7 @@ public class TwainService : ITwainService, IDisposable
             catch (Exception ex)
             {
                 _logger.LogError(ex, "No se pudo abrir la fuente del escáner. Posiblemente esté desconectado.");
-                await CleanupAfterError();
+                await CleanupScan("Error en escaneo TWAIN");
                 return false;
             }
 
@@ -432,7 +360,7 @@ public class TwainService : ITwainService, IDisposable
             catch (NullReferenceException ex)
             {
                 _logger.LogError(ex, "Falló la habilitación del escáner. Posiblemente esté desconectado.");
-                await CleanupAfterError();
+                await CleanupScan("Error en escaneo TWAIN");
                 return false;
             }
 
@@ -441,18 +369,15 @@ public class TwainService : ITwainService, IDisposable
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error inesperado al inicializar escáner específico");
-            await CleanupAfterError();
+            await CleanupScan("Error en escaneo TWAIN");
             return false;
         }
     }
 
-
     private void SetupScanTimeout()
     {
-        // Limpiar timer anterior si existe
         _timeoutTimer?.Dispose();
         
-        // Configurar nuevo timer de timeout
         _timeoutTimer = new Timer(async _ =>
         {
             if (_isScanning && _scanStartTime.HasValue)
@@ -467,7 +392,7 @@ public class TwainService : ITwainService, IDisposable
         }, null, _scanTimeout, TimeSpan.FromMinutes(1));
     }
 
-    private async Task CleanupAfterCancel()
+    private async Task CleanupScan(string message)
     {
         _isScanning = false;
         _scanStartTime = null;
@@ -475,18 +400,7 @@ public class TwainService : ITwainService, IDisposable
         _timeoutTimer = null;
         
         await CloseTwainSession();
-        await _webSocketService.ForceResetScanningState("Escaneo TWAIN cancelado por usuario");
-    }
-
-    private async Task CleanupAfterError()
-    {
-        _isScanning = false;
-        _scanStartTime = null;
-        _timeoutTimer?.Dispose();
-        _timeoutTimer = null;
-        
-        await CloseTwainSession();
-        await _webSocketService.ForceResetScanningState("Error en escaneo TWAIN");
+        await _webSocketService.ForceResetScanningState(message);
     }
 
     private async Task CleanupAfterTimeout()
@@ -496,7 +410,6 @@ public class TwainService : ITwainService, IDisposable
         StopScan();
         await _webSocketService.ForceResetScanningState("Timeout de escaneo TWAIN");
         
-        // Intentar reinicializar TWAIN
         try
         {
             await ForceCleanState();
@@ -624,7 +537,6 @@ public class TwainService : ITwainService, IDisposable
     {
         _logger.LogInformation("ESCANEO FINALIZADO");
         
-        // Limpiar estado
         _isScanning = false;
         _scanStartTime = null;
         _timeoutTimer?.Dispose();
@@ -633,13 +545,11 @@ public class TwainService : ITwainService, IDisposable
         ClosePreviousSource();
         _ = CloseTwainSession();
         
-        // Notificar al WebSocket que el escaneo terminó
         await _webSocketService.ForceResetScanningState("Escaneo TWAIN completado");
         
         SourceDisabled?.Invoke(sender, e);
     }
 
-    // Métodos públicos para manejo de suspensión/reanudación
     public async Task ForceCleanStateAsync()
     {
         await ForceCleanState();
@@ -650,7 +560,7 @@ public class TwainService : ITwainService, IDisposable
         try
         {
             await ForceCleanState();
-            await Task.Delay(1000); // Esperar estabilización
+            await Task.Delay(1000);
             await InitializeAsync();
             _logger.LogInformation("TWAIN reinicializado exitosamente después de reanudación");
         }

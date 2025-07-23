@@ -1,3 +1,5 @@
+using System;
+using System.Windows.Forms;
 using Microsoft.Win32;
 
 namespace ScannerWebSocketFormService
@@ -10,26 +12,24 @@ namespace ScannerWebSocketFormService
         [STAThread]
         static void Main()
         {
-            // Agregar al inicio de Windows
-             AgregarAlInicio();
+            // Solo configurar si no está ya configurado
+            ConfigurarInicioSiEsNecesario();
 
-            // Configuración estándar del formulario
             ApplicationConfiguration.Initialize();
             Application.Run(new Form1());
         }
 
-        static void AgregarAlInicio()
+        static void ConfigurarInicioSiEsNecesario()
         {
             try
             {
-                string nombreApp = "ScannerWebSocketFormService";
-                string rutaEjecutable = Application.ExecutablePath;
+                using RegistryKey clave = Registry.CurrentUser.OpenSubKey(
+                    @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true);
 
-                using RegistryKey clave = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", true);
-
-                if (clave != null && clave.GetValue(nombreApp) == null)
+                // Solo agregar si no existe
+                if (clave?.GetValue("ScannerWebSocketFormService") == null)
                 {
-                    clave.SetValue(nombreApp, $"\"{rutaEjecutable}\"");
+                    clave.SetValue("ScannerWebSocketFormService", $"\"{Application.ExecutablePath}\"");
                 }
             }
             catch (Exception ex)

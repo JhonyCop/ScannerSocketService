@@ -72,7 +72,7 @@ partial class UnifiedDeviceSelectorForm
         // ===== CONTADOR =====
         _labelCount = new Label
         {
-            Text = "📊 Dispositivos encontrados: 0",
+            Text = " Dispositivos encontrados: 0",
             Font = new Font("Segoe UI", 9F),
             ForeColor = Color.FromArgb(100, 100, 100),
             TextAlign = ContentAlignment.MiddleLeft,

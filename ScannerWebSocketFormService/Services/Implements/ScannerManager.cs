@@ -8,10 +8,10 @@ public class ScannerManager : IScannerManager
 {
     private readonly ITwainService _twainService;
     private readonly IScannerService _wiaService;
-    private readonly WiaService _wiaServiceTyped; //  Referencia tipada para métodos específicos
+    private readonly WiaService _wiaServiceTyped;
     private readonly ILogger<ScannerManager> _logger;
 
-    //  Cache de conectividad para evitar verificaciones repetitivas
+    // Cache de conectividad para evitar verificaciones repetitivas
     private readonly Dictionary<string, (bool IsConnected, DateTime CheckTime)> _connectivityCache = new();
     private readonly TimeSpan _connectivityCacheExpiry = TimeSpan.FromMinutes(2);
 
@@ -36,31 +36,26 @@ public class ScannerManager : IScannerManager
         {
             return await RefreshDevicesForUI();
         }
-        else
+
+        try
         {
-            try
-            {
-                var wiaDevices = await _wiaService.GetAvailableDevicesAsync() ?? new List<ScannerDevice>();
-                var twainDevices = await _twainService.GetAvailableDevicesAsync() ?? new List<ScannerDevice>();
-            
-                var allDevices = new List<ScannerDevice>();
-                allDevices.AddRange(wiaDevices);
-                allDevices.AddRange(twainDevices);
-            
-                return RemoveDuplicatesConservative(allDevices);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error en obtención rápida de dispositivos");
-                return new List<ScannerDevice>();
-            }
+            var wiaDevices = await _wiaService.GetAvailableDevicesAsync() ?? new List<ScannerDevice>();
+            var twainDevices = await _twainService.GetAvailableDevicesAsync() ?? new List<ScannerDevice>();
+        
+            var allDevices = new List<ScannerDevice>();
+            allDevices.AddRange(wiaDevices);
+            allDevices.AddRange(twainDevices);
+        
+            return RemoveDuplicateDevicesOptimized(allDevices);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error en obtención rápida de dispositivos");
+            return new List<ScannerDevice>();
         }
     }
 
-    
-    
-
-    //  Verificación rápida de conectividad para un dispositivo específico
+    // Verificación rápida de conectividad para un dispositivo específico
     public async Task<bool> QuickConnectivityCheckAsync(ScannerDevice device)
     {
         if (device == null) return false;
@@ -72,12 +67,12 @@ public class ScannerManager : IScannerManager
         {
             if (DateTime.Now - cached.CheckTime < _connectivityCacheExpiry)
             {
-                _logger.LogDebug(" Cache conectividad para {DeviceName}: {IsConnected}", device.Name, cached.IsConnected);
+                _logger.LogDebug("Cache conectividad para {DeviceName}: {IsConnected}", device.Name, cached.IsConnected);
                 return cached.IsConnected;
             }
         }
 
-        _logger.LogInformation(" Verificación rápida de conectividad: {DeviceName} ({Type})", device.Name, device.Type);
+        _logger.LogInformation("Verificación rápida de conectividad: {DeviceName} ({Type})", device.Name, device.Type);
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
         bool isConnected = false;
@@ -91,7 +86,6 @@ public class ScannerManager : IScannerManager
             }
             else if (device.Type == ScannerType.TWAIN)
             {
-                // Para TWAIN, verificación más básica (TWAIN es más frágil)
                 isConnected = await QuickTwainConnectivityCheck(device);
             }
 
@@ -99,9 +93,9 @@ public class ScannerManager : IScannerManager
             _connectivityCache[deviceKey] = (isConnected, DateTime.Now);
 
             stopwatch.Stop();
-            _logger.LogInformation(" Conectividad {DeviceName}: {Result} ({ElapsedMs}ms)", 
+            _logger.LogInformation("Conectividad {DeviceName}: {Result} ({ElapsedMs}ms)", 
                 device.Name, 
-                isConnected ? " CONECTADO" : " DESCONECTADO", 
+                isConnected ? "CONECTADO" : "DESCONECTADO", 
                 stopwatch.ElapsedMilliseconds);
 
             return isConnected;
@@ -109,7 +103,7 @@ public class ScannerManager : IScannerManager
         catch (Exception ex)
         {
             stopwatch.Stop();
-            _logger.LogWarning(ex, " Error verificando conectividad {DeviceName} ({ElapsedMs}ms)", 
+            _logger.LogWarning(ex, "Error verificando conectividad {DeviceName} ({ElapsedMs}ms)", 
                 device.Name, stopwatch.ElapsedMilliseconds);
             
             // En caso de error, guardar como no conectado en cache
@@ -118,8 +112,7 @@ public class ScannerManager : IScannerManager
         }
     }
 
-
-    //  Verificación rápida para TWAIN (más conservadora)
+    // Verificación rápida para TWAIN (más conservadora)
     private async Task<bool> QuickTwainConnectivityCheck(ScannerDevice device)
     {
         try
@@ -146,25 +139,24 @@ public class ScannerManager : IScannerManager
         }
     }
 
-    //  OPTIMIZADO: StartScan con verificación previa de conectividad
     public async Task<bool> StartScanAsync(ScannerDevice device)
     {
         try
         {
-            _logger.LogInformation(" Iniciando escaneo con verificación previa: {DeviceName} (Tipo: {Type})", 
+            _logger.LogInformation("Iniciando escaneo con verificación previa: {DeviceName} (Tipo: {Type})", 
                 device.Name, device.Type);
 
-            //  NUEVA: Verificación rápida de conectividad ANTES del escaneo
-            _logger.LogInformation(" Verificando conectividad previa al escaneo...");
+            // Verificación rápida de conectividad ANTES del escaneo
+            _logger.LogInformation("Verificando conectividad previa al escaneo...");
             var isConnected = await QuickConnectivityCheckAsync(device);
 
             if (!isConnected)
             {
-                _logger.LogWarning(" Dispositivo {DeviceName} no está conectado - abortando escaneo", device.Name);
+                _logger.LogWarning("Dispositivo {DeviceName} no está conectado - abortando escaneo", device.Name);
                 return false;
             }
 
-            _logger.LogInformation(" Dispositivo {DeviceName} verificado como conectado - procediendo con escaneo", device.Name);
+            _logger.LogInformation("Dispositivo {DeviceName} verificado como conectado - procediendo con escaneo", device.Name);
 
             // Proceder con el escaneo según el tipo
             return device.Type switch
@@ -176,7 +168,7 @@ public class ScannerManager : IScannerManager
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, " Error iniciando escaneo con dispositivo {DeviceName}", device.Name);
+            _logger.LogError(ex, "Error iniciando escaneo con dispositivo {DeviceName}", device.Name);
             return false;
         }
     }
@@ -189,7 +181,7 @@ public class ScannerManager : IScannerManager
         {
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-            // Obtener dispositivos de ambos servicios con timeouts reducidos
+            // Obtener dispositivos de ambos servicios con timeouts
             var deviceTasks = new List<Task<List<ScannerDevice>>>();
 
             // WIA con timeout
@@ -197,7 +189,7 @@ public class ScannerManager : IScannerManager
             {
                 try
                 {
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8)); //  8 segundos máximo
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
                     return await _wiaService.GetAvailableDevicesAsync() ?? new List<ScannerDevice>();
                 }
                 catch (Exception ex)
@@ -212,7 +204,7 @@ public class ScannerManager : IScannerManager
             {
                 try
                 {
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6)); //  6 segundos máximo
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
                     return await _twainService.GetAvailableDevicesAsync() ?? new List<ScannerDevice>();
                 }
                 catch (Exception ex)
@@ -222,7 +214,7 @@ public class ScannerManager : IScannerManager
                 }
             }));
 
-            // Esperar resultados con timeout global
+            // Esperar resultados
             var results = await Task.WhenAll(deviceTasks);
             var wiaDevices = results[0];
             var twainDevices = results[1];
@@ -235,8 +227,8 @@ public class ScannerManager : IScannerManager
             allDevices.AddRange(wiaDevices);
             allDevices.AddRange(twainDevices);
         
-            // Eliminar duplicados conservadoramente
-            var uniqueDevices = RemoveDuplicatesConservative(allDevices);
+            // Eliminar duplicados
+            var uniqueDevices = RemoveDuplicateDevicesOptimized(allDevices);
 
             stopwatch.Stop();
             _logger.LogInformation("=== REFRESH COMPLETADO EN {ElapsedMs}ms: {Count} dispositivos ===", 
@@ -244,7 +236,7 @@ public class ScannerManager : IScannerManager
         
             foreach (var device in uniqueDevices)
             {
-                _logger.LogInformation("  📱 [{Type}] {DisplayName}", device.Type, device.DisplayName);
+                _logger.LogInformation("📱 [{Type}] {DisplayName}", device.Type, device.DisplayName);
             }
         
             return uniqueDevices;
@@ -255,32 +247,6 @@ public class ScannerManager : IScannerManager
             return new List<ScannerDevice>();
         }
     }
-    
-    private List<ScannerDevice> RemoveDuplicatesConservative(List<ScannerDevice> devices)
-    {
-        var uniqueDevices = new List<ScannerDevice>();
-        var seenDevices = new HashSet<string>();
-
-        foreach (var device in devices)
-        {
-            var deviceKey = $"{device.Type}|{device.Name}|{device.Id ?? "NO_ID"}";
-        
-            _logger.LogDebug("Evaluando dispositivo: Key='{Key}', Display='{Display}'", deviceKey, device.DisplayName);
-        
-            if (!seenDevices.Contains(deviceKey))
-            {
-                seenDevices.Add(deviceKey);
-                uniqueDevices.Add(device);
-                _logger.LogDebug("Agregado: [{Type}] {DisplayName}", device.Type, device.DisplayName);
-            }
-            else
-            {
-                _logger.LogDebug("Duplicado exacto eliminado: [{Type}] {DisplayName}", device.Type, device.DisplayName);
-            }
-        }
-    
-        return uniqueDevices;
-    }
 
     public async Task<List<ScannerDevice>> ForceRefreshAllDevices()
     {
@@ -290,104 +256,106 @@ public class ScannerManager : IScannerManager
         {
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             
-            //  PASO 1: Limpiar cachés rápidamente
-            _logger.LogDebug("Paso 1: Limpiando cachés...");
-            _connectivityCache.Clear(); //  Limpiar cache de conectividad
+            // Limpiar cachés
+            _logger.LogDebug("Limpiando cachés...");
+            _connectivityCache.Clear();
             
             if (_wiaService is WiaService wiaImpl)
             {
                 wiaImpl.ClearDeviceCache();
-                _logger.LogDebug(" Caché WIA limpiado");
+                _logger.LogDebug("Caché WIA limpiado");
             }
 
-            //  PASO 2: Liberación rápida de recursos
-            _logger.LogDebug("Paso 2: Liberando recursos...");
+            // Liberación de recursos
+            _logger.LogDebug("Liberando recursos...");
             GC.Collect();
             GC.WaitForPendingFinalizers();
-            await Task.Delay(400); //  Reducido de 500 a 400ms
+            await Task.Delay(400);
 
-            //  PASO 3: Reinicializar solo WIA (TWAIN se mantiene si funciona)
-            _logger.LogDebug("Paso 3: Reinicializando servicios...");
+            // Reinicializar servicios
+            _logger.LogDebug("Reinicializando servicios...");
             
-            var reinitTasks = new List<Task>();
-            
-            // Reinicializar WIA
-            reinitTasks.Add(Task.Run(async () =>
+            var reinitTasks = new List<Task>
             {
-                try
+                // Reinicializar WIA
+                Task.Run(async () =>
                 {
-                    await _wiaService.InitializeAsync();
-                    await Task.Delay(600); //  Reducido de 800 a 600ms
-                    _logger.LogDebug(" WIA reinicializado");
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, " Error reinicializando WIA");
-                }
-            }));
+                    try
+                    {
+                        await _wiaService.InitializeAsync();
+                        await Task.Delay(600);
+                        _logger.LogDebug("WIA reinicializado");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Error reinicializando WIA");
+                    }
+                }),
 
-            // TWAIN más conservador
-            reinitTasks.Add(Task.Run(async () =>
-            {
-                try
+                // TWAIN más conservador
+                Task.Run(async () =>
                 {
-                    if (!_twainService.IsInitialized)
+                    try
                     {
-                        _logger.LogDebug("TWAIN no inicializado - inicializando...");
-                        await _twainService.InitializeAsync();
-                        await Task.Delay(1000); //  Reducido de 1200 a 1000ms
-                        _logger.LogDebug(" TWAIN inicializado");
+                        if (!_twainService.IsInitialized)
+                        {
+                            _logger.LogDebug("TWAIN no inicializado - inicializando...");
+                            await _twainService.InitializeAsync();
+                            await Task.Delay(1000);
+                            _logger.LogDebug("TWAIN inicializado");
+                        }
+                        else
+                        {
+                            _logger.LogDebug("TWAIN ya funcionando - conservando estado");
+                            await Task.Delay(500);
+                        }
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        _logger.LogDebug(" TWAIN ya funcionando - conservando estado");
-                        await Task.Delay(500); //  Reducido de 600 a 500ms
+                        _logger.LogWarning(ex, "Error con TWAIN");
                     }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, " Error con TWAIN");
-                }
-            }));
+                })
+            };
 
             await Task.WhenAll(reinitTasks);
 
-            //  PASO 4: Obtener dispositivos con timeout más agresivo
-            _logger.LogDebug("Paso 4: Obteniendo dispositivos...");
+            // Obtener dispositivos con timeout
+            _logger.LogDebug("Obteniendo dispositivos...");
 
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(12)); //  Reducido de 15 a 12 segundos
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(12));
             
-            var deviceTasks = new List<Task<List<ScannerDevice>>>();
-            
-            deviceTasks.Add(Task.Run(async () =>
+            var deviceTasks = new List<Task<List<ScannerDevice>>>
             {
-                try
+                Task.Run(async () =>
                 {
-                    var wiaDevices = await _wiaService.GetAvailableDevicesAsync();
-                    _logger.LogDebug(" WIA: {Count} dispositivos", wiaDevices?.Count ?? 0);
-                    return wiaDevices ?? new List<ScannerDevice>();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, " Error obteniendo dispositivos WIA");
-                    return new List<ScannerDevice>();
-                }
-            }, cts.Token));
+                    try
+                    {
+                        var wiaDevices = await _wiaService.GetAvailableDevicesAsync();
+                        _logger.LogDebug("WIA: {Count} dispositivos", wiaDevices?.Count ?? 0);
+                        return wiaDevices ?? new List<ScannerDevice>();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Error obteniendo dispositivos WIA");
+                        return new List<ScannerDevice>();
+                    }
+                }, cts.Token),
 
-            deviceTasks.Add(Task.Run(async () =>
-            {
-                try
+                Task.Run(async () =>
                 {
-                    var twainDevices = await _twainService.GetAvailableDevicesAsync();
-                    _logger.LogDebug(" TWAIN: {Count} dispositivos", twainDevices?.Count ?? 0);
-                    return twainDevices ?? new List<ScannerDevice>();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, " Error obteniendo dispositivos TWAIN");
-                    return new List<ScannerDevice>();
-                }
-            }, cts.Token));
+                    try
+                    {
+                        var twainDevices = await _twainService.GetAvailableDevicesAsync();
+                        _logger.LogDebug("TWAIN: {Count} dispositivos", twainDevices?.Count ?? 0);
+                        return twainDevices ?? new List<ScannerDevice>();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Error obteniendo dispositivos TWAIN");
+                        return new List<ScannerDevice>();
+                    }
+                }, cts.Token)
+            };
 
             List<ScannerDevice>[] results;
             try
@@ -396,31 +364,22 @@ public class ScannerManager : IScannerManager
             }
             catch (OperationCanceledException)
             {
-                _logger.LogWarning(" Timeout obteniendo dispositivos - usando resultados parciales");
+                _logger.LogWarning("Timeout obteniendo dispositivos - usando resultados parciales");
                 results = new List<ScannerDevice>[2];
                 
                 for (int i = 0; i < deviceTasks.Count; i++)
                 {
-                    if (deviceTasks[i].IsCompletedSuccessfully)
-                    {
-                        results[i] = deviceTasks[i].Result;
-                    }
-                    else
-                    {
-                        results[i] = new List<ScannerDevice>();
-                    }
+                    results[i] = deviceTasks[i].IsCompletedSuccessfully 
+                        ? deviceTasks[i].Result 
+                        : new List<ScannerDevice>();
                 }
             }
 
-            //  PASO 5: Combinar resultados
+            // Combinar resultados
             var allDevices = new List<ScannerDevice>();
-            
-            foreach (var deviceList in results)
+            foreach (var deviceList in results.Where(r => r != null))
             {
-                if (deviceList != null)
-                {
-                    allDevices.AddRange(deviceList);
-                }
+                allDevices.AddRange(deviceList);
             }
 
             var uniqueDevices = RemoveDuplicateDevicesOptimized(allDevices);
@@ -428,46 +387,24 @@ public class ScannerManager : IScannerManager
             stopwatch.Stop();
             
             _logger.LogInformation("=== REFRESH OPTIMIZADO COMPLETADO EN {ElapsedMs}ms ===", stopwatch.ElapsedMilliseconds);
-            _logger.LogInformation("   Total encontrados: {Count} dispositivos únicos", uniqueDevices.Count);
-            _logger.LogInformation("   WIA: {WiaCount} | TWAIN: {TwainCount}", 
+            _logger.LogInformation("Total encontrados: {Count} dispositivos únicos", uniqueDevices.Count);
+            _logger.LogInformation("WIA: {WiaCount} | TWAIN: {TwainCount}", 
                 results[0]?.Count ?? 0, results[1]?.Count ?? 0);
             
             foreach (var device in uniqueDevices)
             {
-                _logger.LogInformation("  📱 [{Type}] {DisplayName}", device.Type, device.DisplayName);
+                _logger.LogInformation("📱 [{Type}] {DisplayName}", device.Type, device.DisplayName);
             }
             
             return uniqueDevices;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, " Error crítico en refresh optimizado");
-            
-            try
-            {
-                _logger.LogWarning(" Usando fallback básico...");
-                
-                var fallbackWia = await _wiaService.GetAvailableDevicesAsync() ?? new List<ScannerDevice>();
-                var fallbackTwain = await _twainService.GetAvailableDevicesAsync() ?? new List<ScannerDevice>();
-                
-                var fallbackDevices = new List<ScannerDevice>();
-                fallbackDevices.AddRange(fallbackWia);
-                fallbackDevices.AddRange(fallbackTwain);
-                
-                var fallbackUnique = RemoveDuplicateDevicesOptimized(fallbackDevices);
-                
-                _logger.LogInformation(" Fallback exitoso: {Count} dispositivos", fallbackUnique.Count);
-                return fallbackUnique;
-            }
-            catch (Exception fallbackEx)
-            {
-                _logger.LogError(fallbackEx, " Error también en fallback básico");
-                return new List<ScannerDevice>();
-            }
+            _logger.LogError(ex, "Error crítico en refresh optimizado");
+            return await GetFallbackDevices();
         }
     }
 
-    //  Implementación del método faltante
     public async Task<List<ScannerDevice>> ForceRefreshAllDevicesClean(bool forceRefresh = true)
     {
         _logger.LogInformation("=== REFRESH COMPLETO CON LIMPIEZA DE DESCONECTADOS ===");
@@ -484,33 +421,36 @@ public class ScannerManager : IScannerManager
             
             foreach (var device in allDevices)
             {
-                // Verificar conectividad para cada dispositivo
                 if (await QuickConnectivityCheckAsync(device))
                 {
                     connectedDevices.Add(device);
-                    _logger.LogDebug(" Dispositivo conectado: {DisplayName}", device.DisplayName);
+                    _logger.LogDebug("Dispositivo conectado: {DisplayName}", device.DisplayName);
                 }
                 else
                 {
-                    _logger.LogDebug(" Dispositivo desconectado eliminado: {DisplayName}", device.DisplayName);
+                    _logger.LogDebug("Dispositivo desconectado eliminado: {DisplayName}", device.DisplayName);
                 }
             }
             
             stopwatch.Stop();
             
             _logger.LogInformation("=== REFRESH LIMPIO COMPLETADO EN {ElapsedMs}ms ===", stopwatch.ElapsedMilliseconds);
-            _logger.LogInformation(" Dispositivos conectados: {Count} de {Total}", 
+            _logger.LogInformation("Dispositivos conectados: {Count} de {Total}", 
                 connectedDevices.Count, allDevices.Count);
             
             return connectedDevices;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, " Error en refresh con limpieza");
-            
-            // Fallback al refresh estándar
+            _logger.LogError(ex, "Error en refresh con limpieza");
             return await ForceRefreshAllDevices();
         }
+    }
+
+    public void ClearConnectivityCache()
+    {
+        _connectivityCache.Clear();
+        _logger.LogInformation("Cache de conectividad limpiado");
     }
 
     private List<ScannerDevice> RemoveDuplicateDevicesOptimized(List<ScannerDevice> devices)
@@ -518,7 +458,7 @@ public class ScannerManager : IScannerManager
         var uniqueDevices = new List<ScannerDevice>();
         var seenKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var device in devices.OrderBy(d => d.Type)) // Priorizar orden por tipo
+        foreach (var device in devices.OrderBy(d => d.Type))
         {
             var deviceKey = $"{device.Type}|{CleanDeviceNameForComparison(device.Name)}";
         
@@ -526,11 +466,11 @@ public class ScannerManager : IScannerManager
             {
                 seenKeys.Add(deviceKey);
                 uniqueDevices.Add(device);
-                _logger.LogDebug(" Agregado: [{Type}] {DisplayName}", device.Type, device.DisplayName);
+                _logger.LogDebug("Agregado: [{Type}] {DisplayName}", device.Type, device.DisplayName);
             }
             else
             {
-                _logger.LogDebug(" Duplicado: [{Type}] {DisplayName}", device.Type, device.DisplayName);
+                _logger.LogDebug("Duplicado: [{Type}] {DisplayName}", device.Type, device.DisplayName);
             }
         }
 
@@ -548,12 +488,28 @@ public class ScannerManager : IScannerManager
             .Trim();
     }
 
-
-    public void ClearConnectivityCache()
+    private async Task<List<ScannerDevice>> GetFallbackDevices()
     {
-        _connectivityCache.Clear();
-        _logger.LogInformation(" Cache de conectividad limpiado");
+        try
+        {
+            _logger.LogWarning("Usando fallback básico...");
+            
+            var fallbackWia = await _wiaService.GetAvailableDevicesAsync() ?? new List<ScannerDevice>();
+            var fallbackTwain = await _twainService.GetAvailableDevicesAsync() ?? new List<ScannerDevice>();
+            
+            var fallbackDevices = new List<ScannerDevice>();
+            fallbackDevices.AddRange(fallbackWia);
+            fallbackDevices.AddRange(fallbackTwain);
+            
+            var fallbackUnique = RemoveDuplicateDevicesOptimized(fallbackDevices);
+            
+            _logger.LogInformation("Fallback exitoso: {Count} dispositivos", fallbackUnique.Count);
+            return fallbackUnique;
+        }
+        catch (Exception fallbackEx)
+        {
+            _logger.LogError(fallbackEx, "Error también en fallback básico");
+            return new List<ScannerDevice>();
+        }
     }
-
-
 }

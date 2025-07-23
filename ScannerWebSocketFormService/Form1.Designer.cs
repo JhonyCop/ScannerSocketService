@@ -6,34 +6,24 @@ partial class Form1
     ///  Required designer variable.
     /// </summary>
     private System.ComponentModel.IContainer components = null;
-
-    /// <summary>
-    ///  Clean up any resources being used.
-    /// </summary>
-    /// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
+    private System.Windows.Forms.NotifyIcon NotifyScannerService;
+    private System.Windows.Forms.ContextMenuStrip contextMenuStrip;
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
-            // Limpiar NotifyIcon primero
-            if (trayIcon != null)
+            if (NotifyScannerService != null)
             {
-                trayIcon.Visible = false;
-                trayIcon.Dispose();
-                trayIcon = null;
+                NotifyScannerService.Visible = false;
+                NotifyScannerService.Dispose();
+                NotifyScannerService = null;
             }
-
-            // Limpiar components existentes
-            if (components != null)
-            {
-                components.Dispose();
-            }
+            components?.Dispose();
         }
-
         base.Dispose(disposing);
     }
 
-    #region Windows Form Designer generated code
+
 
     /// <summary>
     ///  Required method for Designer support - do not modify
@@ -41,11 +31,38 @@ partial class Form1
     /// </summary>
     private void InitializeComponent()
     {
-        this.components = new System.ComponentModel.Container();
-        this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-        this.ClientSize = new System.Drawing.Size(800, 450);
-        this.Text = "Form1";
+        components = new System.ComponentModel.Container();
+        var resources = new System.ComponentModel.ComponentResourceManager(typeof(Form1));
+        
+        // Crear NotifyIcon
+        NotifyScannerService = new System.Windows.Forms.NotifyIcon(components)
+        {
+            Icon = (System.Drawing.Icon)resources.GetObject("NotifyScannerService.Icon"), Text = "Scanner Service", Visible = true
+        };
+        
+        // Crear menú contextual
+        contextMenuStrip = new System.Windows.Forms.ContextMenuStrip(components);
+        contextMenuStrip.Items.Add("Estado", null, (sender, args) =>
+        {
+            NotifyScannerService.BalloonTipTitle = "Servicio de escáner";
+            NotifyScannerService.BalloonTipText = "El servicio está en línea y funcionando correctamente.";
+            NotifyScannerService.BalloonTipIcon = System.Windows.Forms.ToolTipIcon.Info;
+            NotifyScannerService.ShowBalloonTip(4000); // Mostrar por 4 segundos
+        });
+        contextMenuStrip.Items.Add("Salir", null, (sender, e) => Application.Exit());
+        NotifyScannerService.ContextMenuStrip = contextMenuStrip;
+        
+        // Mostrar notificación de inicio
+        NotifyScannerService.BalloonTipTitle = "Servicio de escáner";
+        NotifyScannerService.BalloonTipText = "El servicio se ha inicializado correctamente.";
+        NotifyScannerService.BalloonTipIcon = System.Windows.Forms.ToolTipIcon.Info;
+        NotifyScannerService.ShowBalloonTip(4000); // Mostrar por 4 segundos
+        
+        // Configuración del formulario
+        AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
+        AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
+        ClientSize = new System.Drawing.Size(800, 450);
+        Text = "Form1";
+        ResumeLayout(false);
     }
-
-    #endregion
 }
