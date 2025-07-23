@@ -32,4 +32,9 @@
       </None>
     </ItemGroup>
 
+    <ItemGroup>
+      <Content Include="obj\Debug\net8.0-windows\ScannerWebSocketFormService.csproj.GenerateResource.cache" />
+      <Content Include="obj\Debug\net8.0-windows\ScannerWebSocketFormService.Form1.resources" />
+    </ItemGroup>
+
 </Project>
