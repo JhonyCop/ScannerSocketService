@@ -10,6 +10,7 @@
 
     <ItemGroup>
       <PackageReference Include="Interop.WIA" Version="1.0.0" />
+      <PackageReference Include="iTextSharp" Version="5.5.13.3" />
       <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0-preview.5.25277.114" />
       <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.0-preview.5.25277.114" />
       <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0-preview.5.25277.114" />
@@ -35,6 +36,10 @@
     <ItemGroup>
       <Content Include="obj\Debug\net8.0-windows\ScannerWebSocketFormService.csproj.GenerateResource.cache" />
       <Content Include="obj\Debug\net8.0-windows\ScannerWebSocketFormService.Form1.resources" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Folder Include="Response\" />
     </ItemGroup>
 
 </Project>

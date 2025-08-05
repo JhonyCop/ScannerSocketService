@@ -17,7 +17,23 @@ partial class UnifiedDeviceSelectorForm
     {
         if (disposing && (components != null))
         {
+            
             components.Dispose();
+            _listBoxDevices?.Dispose();
+            _buttonSelect?.Dispose();
+            _buttonCancel?.Dispose();
+            _buttonRefresh?.Dispose();
+            _labelTitle?.Dispose();
+            _labelCount?.Dispose();
+            _labelStatus?.Dispose();
+            _progressBar?.Dispose();
+            _buttonPanel?.Dispose();
+            
+            // Limpiar listas
+            _initialDevices?.Clear();
+            _currentDevices?.Clear();
+            _sortedDevices?.Clear();
+            
         }
         base.Dispose(disposing);
     }
@@ -186,7 +202,7 @@ partial class UnifiedDeviceSelectorForm
         // ===== BOTÓN CAMBIADO A "SCANEAR" =====
         _buttonSelect = new Button
         {
-            Text = "🖨️ Scanear", // CAMBIADO DE "✅ Seleccionar" A "🖨️ Scanear"
+            Text = "🖨️ Scanear", 
             Font = new Font("Segoe UI", 9F, FontStyle.Bold),
             BackColor = Color.FromArgb(40, 167, 69),
             ForeColor = Color.White,

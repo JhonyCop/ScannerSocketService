@@ -2,7 +2,7 @@
 
 namespace ScannerWebSocketFormService.Services.Interface;
 
-public interface IScannerManager
+public interface IScannerManager: IDisposable
 {
     Task<List<ScannerDevice>> GetAllUpdatedDevicesAsync(bool forceRefresh = true);
     Task<bool> StartScanAsync(ScannerDevice device);

@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ScannerWebSocketFormService")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+94fb0cea84253259cda3ea3ee87a4674a57412db")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+689e767d377817851b02e5d4eb38c7bfc8cf115b")]
 [assembly: System.Reflection.AssemblyProductAttribute("ScannerWebSocketFormService")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ScannerWebSocketFormService")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

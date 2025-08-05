@@ -17,6 +17,7 @@ partial class Form1
                 NotifyScannerService.Visible = false;
                 NotifyScannerService.Dispose();
                 NotifyScannerService = null;
+                
             }
             components?.Dispose();
         }

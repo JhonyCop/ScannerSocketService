@@ -5,6 +5,7 @@ using NTwain;
 using ScannerWebSocketFormService.Services.Implements;
 using ScannerWebSocketFormService.Services.Interface;
 using ScannerWebSocketFormService.Models;
+using ScannerWebSocketFormService.Utils;
 
 namespace ScannerWebSocketFormService;
 
@@ -20,6 +21,7 @@ public partial class Form1 : Form
     private readonly SystemStateManager _systemStateManager;
     private readonly ServiceProvider _serviceProvider;
     private readonly IScannerManager _scannerManager;
+    private readonly MemoryMonitor _memoryMonitor;
     
     private IScannerService? _currentScannerService;
     private DateTime? _lastScanAttempt = null;
@@ -48,6 +50,7 @@ public partial class Form1 : Form
         _imageProcessor = _serviceProvider.GetRequiredService<IImageProcessor>();
         _systemStateManager = _serviceProvider.GetRequiredService<SystemStateManager>();
         _scannerManager = _serviceProvider.GetRequiredService<IScannerManager>();
+        _memoryMonitor = _serviceProvider.GetRequiredService<MemoryMonitor>();
         
         ConfigureEvents();
         ConfigureSystemStateHandlers();
@@ -66,6 +69,7 @@ public partial class Form1 : Form
         });
     
         services.AddSingleton<ITempFileManager, TempFileManager>();
+        services.AddSingleton<MemoryMonitor>();
         services.AddSingleton<IWebSocketService, WebSocketService>();
         services.AddSingleton<SystemStateManager>();
         services.AddSingleton<ITwainService>(provider => 
@@ -1044,10 +1048,31 @@ public partial class Form1 : Form
     }
 
     private async Task ProcessScanCompletion(string scannerType)
+{
+    try
     {
+        _logger.LogInformation("Procesando finalización de escaneo {Type}", scannerType);
+        
         if (_imageProcessor.PageCount > 0)
         {
-            await _imageProcessor.SendPagesViaWebSocketAsync();
+            _logger.LogInformation("Enviando {Count} páginas via WebSocket", _imageProcessor.PageCount);
+            
+            try
+            {
+                await _imageProcessor.SendPagesViaWebSocketAsync();
+                _logger.LogInformation("PDF enviado exitosamente");
+            }
+            catch (Exception sendEx)
+            {
+                _logger.LogError(sendEx, "Error enviando páginas/PDF");
+                
+                // Notificar error al usuario
+                await _webSocketService.BroadcastMessageAsync(new {
+                    type = "scan_error",
+                    message = "Error generando o enviando el PDF. Por favor intente nuevamente.",
+                    error = sendEx.Message
+                });
+            }
         }
         else
         {
@@ -1058,13 +1083,39 @@ public partial class Form1 : Form
                 message = "Escaneo completado sin páginas"
             });
         }
-        
-        _imageProcessor.ClearPages();
-        _tempFileManager.CleanupAll();
-        await _webSocketService.ForceResetScanningState($"Escaneo {scannerType} completado");
-        
-        _logger.LogInformation("PROCESO COMPLETADO - LISTO PARA NUEVO ESCANEO");
     }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Error en ProcessScanCompletion");
+    }
+    finally
+    {
+        // Siempre limpiar, incluso si hay error
+        try
+        {
+            _imageProcessor.ClearPages();
+            _tempFileManager.CleanupAll();
+            
+            //  Forzar limpieza de memoria con MemoryMonitor
+            _memoryMonitor.ForceCleanup($"Escaneo {scannerType} completado");
+            
+            // Liberar servicios
+            if (scannerType == "WIA" && _wiaService != null)
+            {
+                _wiaService.StopScan();
+            }
+            
+            await _webSocketService.ForceResetScanningState($"Escaneo {scannerType} completado");
+            
+            _logger.LogInformation("PROCESO COMPLETADO - Memoria: {Memory}", 
+                _memoryMonitor.GetMemoryStatus());
+        }
+        catch (Exception cleanupEx)
+        {
+            _logger.LogError(cleanupEx, "Error durante limpieza post-escaneo");
+        }
+    }
+}
     #endregion
 
     #region Form Configuration and Events
@@ -1115,6 +1166,8 @@ public partial class Form1 : Form
         try
         {
             await CleanupResources();
+            _serviceProvider.Dispose();
+            
         }
         catch (Exception ex)
         {

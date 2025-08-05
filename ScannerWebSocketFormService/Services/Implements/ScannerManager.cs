@@ -1,10 +1,11 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 using ScannerWebSocketFormService.Models;
 using ScannerWebSocketFormService.Services.Interface;
 
 namespace ScannerWebSocketFormService.Services.Implements;
 
-public class ScannerManager : IScannerManager
+public class ScannerManager : IScannerManager, IDisposable
 {
     private readonly ITwainService _twainService;
     private readonly IScannerService _wiaService;
@@ -199,7 +200,7 @@ public class ScannerManager : IScannerManager
                 }
             }));
 
-            // TWAIN con timeout
+             // TWAIN con timeout
             deviceTasks.Add(Task.Run(async () =>
             {
                 try
@@ -511,5 +512,12 @@ public class ScannerManager : IScannerManager
             _logger.LogError(fallbackEx, "Error también en fallback básico");
             return new List<ScannerDevice>();
         }
+    }
+    
+    public void Dispose()
+    {
+        _twainService.Dispose();
+        _wiaService.Dispose();
+        _wiaServiceTyped.Dispose();
     }
 }

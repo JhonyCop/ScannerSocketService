@@ -1,6 +1,8 @@
 using System;
 using System.Windows.Forms;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Win32;
+using ScannerWebSocketFormService.Services.Implements;
 
 namespace ScannerWebSocketFormService
 {
@@ -12,11 +14,25 @@ namespace ScannerWebSocketFormService
         [STAThread]
         static void Main()
         {
-            // Solo configurar si no está ya configurado
-            ConfigurarInicioSiEsNecesario();
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
 
-            ApplicationConfiguration.Initialize();
-            Application.Run(new Form1());
+            // Utiliza 'using' para garantizar la liberación del ServiceProvider
+            using (var serviceProvider = new ServiceCollection()
+                       .AddSingleton<ScannerManager>()
+                       .AddSingleton<ImageProcessor>()
+                       .AddSingleton<TwainService>()
+                       .AddSingleton<WiaService>()
+                       .AddSingleton<TempFileManager>()
+                       .AddSingleton<WebSocketService>()
+                       .AddSingleton<SystemStateManager>()
+                       .AddSingleton<Form1>()
+                       .BuildServiceProvider())
+            {
+                // Crea la instancia de Form1 y ejecuta la aplicación
+                var form1 = serviceProvider.GetRequiredService<Form1>();
+                Application.Run(form1);
+            }
         }
 
         static void ConfigurarInicioSiEsNecesario()

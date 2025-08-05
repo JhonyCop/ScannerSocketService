@@ -18,4 +18,6 @@ public interface IWebSocketService : IDisposable
     Task NotifyConnectivityCheckStarted(string deviceName);
     Task NotifyConnectivityCheckCompleted(string deviceName, bool isConnected, string details = "");
     Task NotifyDeviceSelectionError(string errorMessage);
+    
+    Task BroadcastBinaryAsyncTwo(byte[] data, string contentType, string fileName);
 }

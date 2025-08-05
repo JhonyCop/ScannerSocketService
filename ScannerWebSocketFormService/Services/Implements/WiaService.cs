@@ -87,168 +87,97 @@ public class WiaService : IScannerService, IDisposable
     }
     
     public async Task<List<ScannerDevice>> GetAvailableDevicesAsync()
+{
+    var devices = new List<ScannerDevice>();
+    var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+    
+    try
     {
-        var devices = new List<ScannerDevice>();
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        _logger.LogInformation("🔍 Iniciando detección WIA optimizada...");
         
-        try
+        using var globalTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        
+        await Task.Run(() =>
         {
-            _logger.LogInformation(" Iniciando detección WIA optimizada...");
-            
-            // Usar timeout global para evitar que se cuelgue
-            using var globalTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10)); // 10 segundos máximo
-            
-            await Task.Run(() =>
+            DeviceManager? tempDeviceManager = null;
+            try
             {
-                try
+                //  Usar DeviceManager temporal
+                tempDeviceManager = new DeviceManager();
+                
+                foreach (DeviceInfo info in tempDeviceManager.DeviceInfos)
                 {
-                    var deviceManager = new DeviceManager();
+                    if (globalTimeout.Token.IsCancellationRequested)
+                        break;
                     
-                    foreach (DeviceInfo info in deviceManager.DeviceInfos)
+                    if (info.Type != WiaDeviceType.ScannerDeviceType)
+                        continue;
+                    
+                    Device? tempDevice = null;
+                    try
                     {
-                        // Verificar si ya se agotó el tiempo
-                        if (globalTimeout.Token.IsCancellationRequested)
-                        {
-                            _logger.LogWarning(" Timeout global alcanzado en detección de dispositivos");
-                            break;
-                        }
+                        // Verificaciones básicas...
+                        var deviceId = info.DeviceID;
+                        var nameProperty = info.Properties["Name"];
+                        var deviceName = nameProperty?.get_Value()?.ToString() ?? "";
                         
-                        // Solo interesan dispositivos tipo escáner
-                        if (info.Type != WiaDeviceType.ScannerDeviceType)
+                        if (string.IsNullOrEmpty(deviceName))
                             continue;
                         
-                        // Verificación rápida de propiedades básicas ANTES de intentar conectar
-                        var deviceName = "Dispositivo desconocido";
-                        var deviceId = "";
+                        //  NO conectar para solo listar dispositivos
+                        devices.Add(new ScannerDevice
+                        {
+                            Id = deviceId,
+                            Name = deviceName,
+                            DisplayName = $"WIA - {deviceName}",
+                            Type = ScannerType.WIA,
+                            NativeDevice = null, //  NO guardar referencia COM
+                            IsAvailable = true
+                        });
                         
-                        try
+                        _logger.LogInformation("✅ Dispositivo WIA disponible: {DeviceName}", deviceName);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning("❌ Dispositivo WIA ignorado: {Error}", ex.Message);
+                    }
+                    finally
+                    {
+                        //  Liberar Device si se creó
+                        if (tempDevice != null)
                         {
-                            deviceId = info.DeviceID;
-                            
-                            // Verificaciones rápidas de exclusión
-                            if (string.IsNullOrEmpty(deviceId) ||
-                                deviceId.Contains("ROOT\\LEGACY_") ||
-                                deviceId.Contains("NULL") ||
-                                deviceId.Contains("UNKNOWN"))
-                            {
-                                _logger.LogDebug(" Dispositivo ignorado por ID inválido: {DeviceId}", deviceId);
-                                continue;
-                            }
-                            
-                            // Verificar que podemos acceder al nombre rápidamente
-                            var nameProperty = info.Properties["Name"];
-                            if (nameProperty?.get_Value() == null)
-                            {
-                                _logger.LogDebug(" Dispositivo ignorado por nombre inaccesible: {DeviceId}", deviceId);
-                                continue;
-                            }
-                            
-                            deviceName = nameProperty.get_Value().ToString();
-                            if (string.IsNullOrEmpty(deviceName))
-                            {
-                                _logger.LogDebug(" Dispositivo ignorado por nombre vacío: {DeviceId}", deviceId);
-                                continue;
-                            }
-                            
-                            _logger.LogDebug(" Verificando dispositivo: {DeviceName} ({DeviceId})", deviceName, deviceId);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogDebug(" Error accediendo a propiedades básicas: {Error}", ex.Message);
-                            continue;
-                        }
-                        
-                        // Solo AHORA intentar conectar, pero con timeout individual
-                        try
-                        {
-                            Device device = null;
-                            
-                            // Usar timeout individual para cada conexión (2 segundos máximo por dispositivo)
-                            using var deviceTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-                            using var combinedTimeout = CancellationTokenSource.CreateLinkedTokenSource(
-                                globalTimeout.Token, deviceTimeout.Token);
-                            
-                            var connectionTask = Task.Run(() =>
-                            {
-                                try
-                                {
-                                    return info.Connect();
-                                }
-                                catch (Exception ex)
-                                {
-                                    _logger.LogDebug(" Error en conexión: {Error}", ex.Message);
-                                    return null;
-                                }
-                            }, combinedTimeout.Token);
-                            
-                            // Esperar con timeout
-                            if (connectionTask.Wait(2000)) // 2 segundos timeout
-                            {
-                                device = connectionTask.Result;
-                            }
-                            else
-                            {
-                                _logger.LogDebug(" Timeout conectando a: {DeviceName}", deviceName);
-                                continue;
-                            }
-                            
-                            if (device != null)
-                            {
-                                devices.Add(new ScannerDevice
-                                {
-                                    Id = deviceId,
-                                    Name = deviceName,
-                                    DisplayName = $"WIA - {deviceName}",
-                                    Type = ScannerType.WIA,
-                                    NativeDevice = info, // o "device", si usas el objeto ya conectado
-                                    IsAvailable = true
-                                });
-
-                                
-                                _logger.LogInformation(" Dispositivo WIA disponible: {DeviceName}", deviceName);
-                            }
-                            else
-                            {
-                                _logger.LogDebug(" Dispositivo no respondió: {DeviceName}", deviceName);
-                            }
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            _logger.LogDebug(" Timeout en dispositivo: {DeviceName}", deviceName);
-                            continue;
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning(" Dispositivo WIA ignorado (no disponible): {DeviceName} - {Error}", 
-                                deviceName, ex.Message);
-                            continue;
+                            ReleaseComObject(tempDevice);
+                            tempDevice = null;
                         }
                     }
                 }
-                catch (Exception ex)
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error enumerando dispositivos WIA");
+            }
+            finally
+            {
+                //  Liberar DeviceManager temporal
+                if (tempDeviceManager != null)
                 {
-                    _logger.LogError(ex, " Error enumerando dispositivos WIA");
+                    ReleaseComObject(tempDeviceManager);
+                    tempDeviceManager = null;
                 }
-            }, globalTimeout.Token);
-            
-            stopwatch.Stop();
-            _logger.LogInformation(" Detección WIA optimizada completada en {ElapsedMs}ms - {Count} dispositivos encontrados", 
-                stopwatch.ElapsedMilliseconds, devices.Count);
-        }
-        catch (OperationCanceledException)
-        {
-            stopwatch.Stop();
-            _logger.LogWarning(" Detección WIA cancelada por timeout global después de {ElapsedMs}ms", 
-                stopwatch.ElapsedMilliseconds);
-        }
-        catch (Exception ex)
-        {
-            stopwatch.Stop();
-            _logger.LogError(ex, " Error crítico en detección WIA optimizada");
-        }
+            }
+        }, globalTimeout.Token);
         
-        return devices;
+        stopwatch.Stop();
+        _logger.LogInformation("✅ Detección WIA completada en {ElapsedMs}ms - {Count} dispositivos", 
+            stopwatch.ElapsedMilliseconds, devices.Count);
     }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Error crítico en detección WIA");
+    }
+    
+    return devices;
+}
 
     /*public async Task<List<ScannerDevice>> GetAvailableDevicesAsync()
     {
@@ -1041,82 +970,80 @@ public class WiaService : IScannerService, IDisposable
     }
 
     private async Task<bool> ConnectToDeviceWithTimeoutAsync(ScannerDevice device, CancellationToken cancellationToken)
+{
+    Device? newDevice = null;
+    DeviceManager? tempDeviceManager = null;
+    
+    try
     {
-        try
+        //  Liberar dispositivo anterior
+        if (_currentDevice != null)
         {
-            if (device.NativeDevice is DeviceInfo deviceInfo)
+            ReleaseComObject(_currentDevice);
+            _currentDevice = null;
+        }
+
+        _logger.LogInformation("🔌 Conectando a dispositivo WIA: {DeviceName}", device.Name);
+        
+        //  Crear DeviceManager temporal para conectar
+        tempDeviceManager = new DeviceManager();
+        
+        // Buscar el dispositivo por ID
+        foreach (DeviceInfo info in tempDeviceManager.DeviceInfos)
+        {
+            if (info.DeviceID == device.Id)
             {
-                _logger.LogInformation("🔌 Conectando a dispositivo WIA: {DeviceName}", device.Name);
-                
-                // TIMEOUT DINÁMICO: más corto si ya sabemos que podría estar desconectado
-                var connectTimeout = _connectionTimeout;
-                var deviceId = device.Id ?? "unknown";
-                
-                if (_connectivityCache.TryGetValue(deviceId, out var cached) && !cached.IsConnected)
-                {
-                    connectTimeout = _disconnectedDeviceTimeout; // Timeout más corto para dispositivos problemáticos
-                    _logger.LogDebug(" Usando timeout reducido para dispositivo potencialmente desconectado");
-                }
-                
                 var connectionTask = Task.Run(() =>
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    return deviceInfo.Connect();
+                    try
+                    {
+                        return info.Connect();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error en Connect()");
+                        return null;
+                    }
                 }, cancellationToken);
 
-                _currentDevice = await connectionTask.WaitAsync(connectTimeout, cancellationToken);
-                _logger.LogInformation(" Conexión WIA exitosa: {DeviceName}", device.Name);
-                return true;
-            }
-            else if (device.NativeDevice is Device wiaDevice)
-            {
-                _currentDevice = wiaDevice;
-                return true;
-            }
-            else
-            {
-                _logger.LogError(" Tipo de dispositivo WIA no válido");
-                ScanError?.Invoke(this, " Dispositivo no válido - selecciona otro dispositivo");
-                return false;
+                newDevice = await connectionTask.WaitAsync(_connectionTimeout, cancellationToken);
+                break;
             }
         }
-        catch (TimeoutException)
+        
+        if (newDevice != null)
         {
-            _logger.LogError(" Timeout conectando a dispositivo WIA: {DeviceName}", device.Name);
-            DeviceTimeout?.Invoke(this, $"Timeout conectando a {device.Name}");
-            ScanError?.Invoke(this, $" {device.Name} está desconectado o no responde.\n\n🔌 Por favor:\n• Verifica que el dispositivo esté encendido\n• Revisa la conexión USB\n• O selecciona otro dispositivo");
-            return false;
+            _currentDevice = newDevice;
+            _logger.LogInformation("✅ Conexión WIA exitosa: {DeviceName}", device.Name);
+            return true;
         }
-        catch (OperationCanceledException)
+        else
         {
-            _logger.LogWarning(" Conexión WIA cancelada por timeout: {DeviceName}", device.Name);
-            DeviceTimeout?.Invoke(this, $"Conexión cancelada: {device.Name}");
-            ScanError?.Invoke(this, $" {device.Name} no responde.\n\n🔌 El dispositivo parece estar desconectado.\nPor favor selecciona otro dispositivo.");
-            return false;
-        }
-        catch (COMException comEx)
-        {
-            _logger.LogError(" Error COM conectando a dispositivo WIA {DeviceName} (0x{ErrorCode:X8}): {Message}", 
-                device.Name, comEx.ErrorCode, comEx.Message);
-            
-            var errorMessage = (int)comEx.ErrorCode switch
-            {
-                unchecked((int)0x80210005) => $" {device.Name} está ocupado.\n\n Por favor:\n• Cierra otras aplicaciones de escaneo\n• O selecciona otro dispositivo",
-                unchecked((int)0x80210006) => $" {device.Name} está en uso.\n\n Está siendo usado por otra aplicación.\nSelecciona otro dispositivo.", 
-                unchecked((int)0x80210064) => $"🔌 {device.Name} está desconectado.\n\n🔌 Por favor:\n• Verifica la conexión del dispositivo\n• Enciende el dispositivo\n• O selecciona otro dispositivo",
-                _ => $" Error conectando a {device.Name}.\n\n Código: 0x{comEx.ErrorCode:X8}\nPor favor selecciona otro dispositivo."
-            };
-            
-            ScanError?.Invoke(this, errorMessage);
-            return false;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, " Error general conectando a dispositivo WIA: {DeviceName}", device.Name);
-            ScanError?.Invoke(this, $" {device.Name} no está disponible.\n\n Error: {ex.Message}\n\nPor favor selecciona otro dispositivo.");
+            _logger.LogError("❌ No se pudo conectar a: {DeviceName}", device.Name);
             return false;
         }
     }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Error conectando a dispositivo WIA");
+        
+        //  Liberar en caso de error
+        if (newDevice != null && newDevice != _currentDevice)
+        {
+            ReleaseComObject(newDevice);
+        }
+        
+        return false;
+    }
+    finally
+    {
+        //  Siempre liberar DeviceManager temporal
+        if (tempDeviceManager != null)
+        {
+            ReleaseComObject(tempDeviceManager);
+        }
+    }
+}
     
     private async Task ScanWithoutUIWithTimeout(CancellationToken cancellationToken)
     {
@@ -1296,30 +1223,73 @@ public class WiaService : IScannerService, IDisposable
             var fileName = $"wia_scan_{timestamp}.jpg";
             var filePath = Path.Combine(_tempFileManager.TempFolder, fileName);
 
+            // Guardar archivo
             imageFile.SaveFile(filePath);
             _tempFileManager.AddTempFile(filePath);
+        
+            //  Liberar ImageFile inmediatamente
+            ReleaseComObject(imageFile);
 
-            _logger.LogInformation(" WIA image saved: {FileName}", fileName);
+            _logger.LogInformation("✅ WIA image saved: {FileName}", fileName);
             ImageScanned?.Invoke(this, filePath);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, " Error processing WIA image");
+            _logger.LogError(ex, "Error processing WIA image");
             throw;
         }
     }
 
     public void StopScan()
     {
-        _logger.LogInformation(" Deteniendo escaneo WIA...");
-        
+        _logger.LogInformation("🛑 Deteniendo escaneo WIA...");
+    
         _scanCancellationSource?.Cancel();
         _isScanning = false;
-        _currentDevice = null;
-        
-        _logger.LogInformation(" Escaneo WIA detenido");
-    }
     
+        //  Liberar dispositivo COM completamente
+        if (_currentDevice != null)
+        {
+            try
+            {
+                ReleaseComObject(_currentDevice);
+                _logger.LogDebug("✅ Dispositivo COM liberado");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error liberando dispositivo COM");
+            }
+            finally
+            {
+                _currentDevice = null;
+            }
+        }
+    
+        //  Liberar DeviceManager si existe
+        if (_deviceManager != null)
+        {
+            try
+            {
+                ReleaseComObject(_deviceManager);
+                _logger.LogDebug("✅ DeviceManager liberado");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error liberando DeviceManager");
+            }
+            finally
+            {
+                _deviceManager = null;
+            }
+        }
+    
+        //  Forzar recolección después de liberar COM
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+    
+        _logger.LogInformation("✅ Escaneo WIA detenido y memoria liberada");
+    }
     public void ClearDeviceCache()
     {
         _deviceCache.Clear();
@@ -1330,21 +1300,59 @@ public class WiaService : IScannerService, IDisposable
         _lastAvailabilityCheck = DateTime.MinValue;
         _logger.LogInformation(" Cache WIA completo limpiado");
     }
+    
+    private void ReleaseComObject(object obj)
+    {
+        if (obj != null && Marshal.IsComObject(obj))
+        {
+            try
+            {
+                Marshal.ReleaseComObject(obj);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error liberando objeto COM");
+            }
+        }
+    }
+
 
     public void Dispose()
     {
         if (!_disposed)
         {
             StopScan();
-            _scanCancellationSource?.Dispose();
-            _currentDevice = null;
-            _deviceManager = null;
+        
+            // Limpiar caches
             _deviceCache.Clear();
             _knownAvailableDevices.Clear();
             _knownUnresponsiveDevices.Clear();
             _connectivityCache.Clear();
+        
+            // Liberar timer
+            _scanCancellationSource?.Dispose();
+        
+            //  Liberar cualquier objeto COM restante
+            if (_currentDevice != null)
+            {
+                ReleaseComObject(_currentDevice);
+                _currentDevice = null;
+            }
+        
+            if (_deviceManager != null)
+            {
+                ReleaseComObject(_deviceManager);
+                _deviceManager = null;
+            }
+        
             _disposed = true;
-            _logger.LogInformation(" WIA Scanner Service disposed");
+        
+            // Forzar limpieza final
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+        
+            _logger.LogInformation("✅ WIA Scanner Service disposed");
         }
     }
 }

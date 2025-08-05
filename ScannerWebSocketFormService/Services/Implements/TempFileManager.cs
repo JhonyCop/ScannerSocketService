@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using ScannerWebSocketFormService.Services.Interface;
+using Timer = System.Threading.Timer;
 
 namespace ScannerWebSocketFormService.Services.Implements;
 
@@ -9,7 +10,7 @@ public class TempFileManager : ITempFileManager, IDisposable
         private readonly HashSet<string> _tempFilesCreated = new();
         private string _tempFolder = string.Empty;
         private bool _disposed = false;
-
+        private Timer? _autoCleanupTimer;
         public string TempFolder => _tempFolder;
 
         public TempFileManager(ILogger<TempFileManager> logger)
@@ -41,6 +42,23 @@ public class TempFileManager : ITempFileManager, IDisposable
 
                 ValidatePermissions();
                 ValidateSpace();
+                
+                _autoCleanupTimer = new Timer(_ =>
+                {
+                    try
+                    {
+                        CleanupTempFiles();
+                        GC.Collect();
+                        GC.WaitForPendingFinalizers();
+                        GC.Collect();
+                        _logger.LogInformation("Limpieza periódica automática de archivos temporales ejecutada");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Error durante limpieza periódica automática");
+                    }
+                }, null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
+                
             }
             catch (Exception ex)
             {
@@ -153,6 +171,7 @@ public class TempFileManager : ITempFileManager, IDisposable
                 }
             }
         }
+        
 
         public void Dispose()
         {

@@ -702,6 +702,57 @@ public class WebSocketService : IWebSocketService, IDisposable
             await webSocket.SendAsync(new ArraySegment<byte>(buffer), WebSocketMessageType.Text, true, CancellationToken.None);
         }
     }
+    
+    public async Task BroadcastBinaryAsyncTwo(byte[] data, string contentType, string fileName)
+    {
+        var clientsToRemove = new List<WebSocketClientInfo>();
+
+        foreach (var clientInfo in _connectedClients.ToList())
+        {
+            if (clientInfo.WebSocket.State == WebSocketState.Open)
+            {
+                try
+                {
+                    //  incluir encabezados como JSON antes del binario (opcional)
+                    // enviar los metadatos como texto antes del binario
+                    var header = new
+                    {
+                        type = "pdf_binary",
+                        fileName,
+                        contentType,
+                        fileSize = data.Length
+                    };
+
+                    var headerJson = System.Text.Json.JsonSerializer.Serialize(header);
+                    var headerBytes = System.Text.Encoding.UTF8.GetBytes(headerJson);
+
+                    // Enviar encabezado como texto JSON
+                    var headerSegment = new ArraySegment<byte>(headerBytes);
+                    await clientInfo.WebSocket.SendAsync(headerSegment, WebSocketMessageType.Text, true, CancellationToken.None);
+
+                    // Luego enviar el archivo binario
+                    var binarySegment = new ArraySegment<byte>(data);
+                    await clientInfo.WebSocket.SendAsync(binarySegment, WebSocketMessageType.Binary, true, CancellationToken.None);
+
+                    clientInfo.LastActivity = DateTime.Now;
+                }
+                catch
+                {
+                    clientsToRemove.Add(clientInfo);
+                }
+            }
+            else
+            {
+                clientsToRemove.Add(clientInfo);
+            }
+        }
+
+        foreach (var clientInfo in clientsToRemove)
+        {
+            await RemoveClient(clientInfo);
+        }
+    }
+
 
     public void Dispose()
     {
